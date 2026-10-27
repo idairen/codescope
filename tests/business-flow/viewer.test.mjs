@@ -57,6 +57,12 @@ function setup(adapt = () => {}) {
     status: 'inferred',
     evidence: graph.nodes[0].evidence,
   });
+  graph.ui = JSON.parse(
+    fs.readFileSync(
+      new URL('../../skills/business-flow/assets/locales.json', import.meta.url),
+      'utf8',
+    ),
+  )['zh-CN'];
   adapt(graph);
   const ids = new Map();
   const get = (id) => {
@@ -284,4 +290,69 @@ test('drop over another node leaves the dragged node in place and separates the 
   a.get('graph').events.pointerup(end);
   assert.deepEqual(coords(a.node('orders')), [tx, ty]);
   assertNoNodeOverlap(a);
+});
+
+function withImpact(graph) {
+  graph.impact = JSON.parse(
+    fs.readFileSync(new URL('../../docs/business-flow/order-impact.json', import.meta.url), 'utf8'),
+  ).impact;
+}
+test('impact overlay distinguishes direct/indirect, summarizes parents, and can be disabled', () => {
+  const a = setup(withImpact);
+  assert.equal(a.node('create').attrs['data-impact'], 'indirect');
+  assert.equal(a.node('orders').attrs['data-impact'], 'indirect');
+  assert.equal(a.node('unrelated').attrs['data-impact'], 'none');
+  a.get('impact-focus').onclick();
+  assert.equal(a.node('rule-quantity').attrs['data-impact'], 'direct');
+  assert.equal(a.node('rule-quantity').querySelector('circle').attrs.stroke, '#ff526f');
+  assert.equal(a.node('invalid-order').querySelector('circle').attrs['stroke-dasharray'], '5 3');
+  const edge = a.get('edges').children.find((e) => e.attrs['data-edge'] === 'rule-quantity-fail');
+  assert(edge.attrs.class.includes('impacted'));
+  assert.equal(edge.attrs['marker-end'], 'url(#impact-arrow)');
+  a.click('calculate-total');
+  assert(a.get('details').children.some((el) => el.textContent === '影响传播路径'));
+  assert(a.get('details').children.some((el) => el.textContent === '需求影响预估 · 尚未修改代码'));
+  assert.equal(a.node('rule-quantity').style.opacity, '1');
+  a.get('impact-toggle').checked = false;
+  a.get('impact-toggle').onchange();
+  assert.equal(a.node('calculate-total').attrs['data-impact'], 'none');
+  assert(!a.get('edges').children.some((e) => e.attrs.class?.includes('impacted')));
+});
+test('unannotated reports do not claim impact analysis; diff report shows comparison', () => {
+  const a = setup();
+  assert.equal(a.get('impact-focus').disabled, true);
+  assert.equal(a.get('impact-toggle').disabled, true);
+  const b = setup((graph) => {
+    withImpact(graph);
+    graph.impact.mode = 'diff';
+    graph.impact.comparison = { base: 'base-sha', target: 'working-tree' };
+  });
+  assert(b.get('details').children.some((el) => el.textContent === '代码差异影响 · 非运行时证明'));
+  assert(b.get('details').children.some((el) => el.textContent === 'base-sha → working-tree'));
+});
+
+test('English catalog covers rule panels, impact explanations, status and search messages', () => {
+  const a = setup((graph) => {
+    withImpact(graph);
+    graph.ui = JSON.parse(
+      fs.readFileSync(
+        new URL('../../skills/business-flow/assets/locales.json', import.meta.url),
+        'utf8',
+      ),
+    ).en;
+  });
+  a.get('impact-focus').onclick();
+  a.click('rule-quantity');
+  assert(
+    a
+      .get('details')
+      .children.some((el) => el.textContent === 'Validation condition (true means pass)'),
+  );
+  assert(a.get('details').children.some((el) => el.textContent === 'Direct impact / change point'));
+  assert(a.get('status').textContent.includes('nodes'));
+  assert(a.get('status').textContent.includes('Impact analysis:'));
+  assert(a.get('edges').children.some((el) => el.textContent === 'Fail'));
+  a.get('search').value = 'nonexistent-123';
+  a.get('search').oninput();
+  assert.equal(a.get('results').children[0].textContent, 'No matching nodes');
 });

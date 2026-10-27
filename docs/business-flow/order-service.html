@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Business Flow</title>
+    <title>业务数据流程</title>
     <style>
       :root {
         color-scheme: dark;
@@ -147,6 +147,14 @@
       .branch-label.fail {
         fill: #ec8796;
       }
+      .edge.impacted {
+        stroke: #ff526f;
+        stroke-width: 3;
+      }
+      .node[data-impact='direct'] text,
+      .node[data-impact='indirect'] text {
+        fill: #ff9aac;
+      }
       .edge.inferred {
         stroke-dasharray: 6 5;
       }
@@ -285,7 +293,7 @@
   </head>
   <body>
     <header>
-      <small>BUSINESS FLOW / SOURCE EXPLORER</small>
+      <small>业务数据流程 / 源码探索</small>
       <h1 id="title"></h1>
       <p id="scope"></p>
     </header>
@@ -310,7 +318,9 @@
         </select></label
       ><label><input id="logic" type="checkbox" /> 包含业务逻辑校验</label
       ><label><input id="inferred" type="checkbox" /> 显示推测关系</label
-      ><button id="collapse">收起展开</button><button id="reset">返回总览</button>
+      ><label><input id="impact-toggle" type="checkbox" /> 红色标记变更影响</label
+      ><button id="impact-focus">定位影响流程</button><button id="collapse">收起展开</button
+      ><button id="reset">返回总览</button>
       <div class="legend">
         <span style="--dot: #efaa72">校验规则</span><span style="--dot: #b39af5">业务处理</span
         ><span style="--dot: #6bbac5">数据 / 存储</span
@@ -333,6 +343,17 @@
             >
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#a795d0" />
             </marker>
+            <marker
+              id="impact-arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff526f" />
+            </marker>
           </defs>
           <g id="viewport">
             <g id="edges"></g>
@@ -351,7 +372,7 @@
     </main>
     <footer>
       依据源码归纳业务关系，不代表运行时追踪。实线为数据流，点线为执行顺序 /
-      条件；绿色通过，红色拒绝；长虚线为推测。
+      条件；绿色通过，粉色拒绝；长虚线为推测。影响分析：红色实框为直接影响，红色虚框为间接影响。
     </footer>
     <script id="graph-data" type="application/json">
       {
@@ -1106,12 +1127,99 @@
             "evidence": [{ "path": "src/repository.ts", "startLine": 17, "endLine": 21 }]
           }
         ],
+        "language": {
+          "code": "zh-CN",
+          "selection": "project",
+          "reason": "项目 README 的业务说明为中文；检查了业务源文件，但未发现可用于语言判断的实质性注释，因此以文档为主要依据。代码标识符和字符串不作为语言判定票数。",
+          "evidence": [{ "path": "README.md", "startLine": 1, "endLine": 15 }]
+        },
         "sourceHashes": {
           "src/orders.ts": "4da2f862911d0f62cbddc4639f088b8f5fc17aa28746fbd9aa65ea9722a4a2ac",
           "src/repository.ts": "9b5dc4feee440d35decc7cb2baffa48519227f13741252e81522f6dcbd1bdff8",
           "src/payments.ts": "2809e82bf1807a075b88a880136713a45ef1d17c61d735bb1ec3cc358c0da1b0",
           "src/inventory.ts": "a696325879401bc8a9fd64107960b7d5a3962953a6a7d6fd8a997181bebc4277",
-          "src/validation.ts": "b96f0c59ad532f92aa6bc67df397162d34bd291c1ec280a66c2c99bf252182d2"
+          "src/validation.ts": "b96f0c59ad532f92aa6bc67df397162d34bd291c1ec280a66c2c99bf252182d2",
+          "README.md": "2a1b6ee1dd66158b64bb88dc50fed2efe8ba6de31cccac71d4b6681c02991a9b"
+        },
+        "ui": {
+          "appTitle": "业务数据流程",
+          "brand": "业务数据流程 / 源码探索",
+          "controls": "图谱控制",
+          "searchPlaceholder": "搜索业务节点…",
+          "search": "搜索业务节点",
+          "direction": "方向",
+          "both": "上下游",
+          "upstream": "仅上游",
+          "downstream": "仅下游",
+          "depth": "深度",
+          "depthOne": "1 层",
+          "depthTwo": "2 层",
+          "logic": "包含业务逻辑校验",
+          "inferredToggle": "显示推测关系",
+          "impactToggle": "红色标记变更影响",
+          "impactFocus": "定位影响流程",
+          "collapse": "收起展开",
+          "reset": "返回总览",
+          "ruleLegend": "校验规则",
+          "processLegend": "业务处理",
+          "dataLegend": "数据 / 存储",
+          "actorLegend": "参与者 / 结果",
+          "canvas": "业务流程画布",
+          "graph": "可交互业务图",
+          "hint": "点击节点探索 · 再次点击收起 · 拖拽布局 · 滚轮缩放",
+          "fit": "适应全图",
+          "zoomIn": "放大",
+          "zoomOut": "缩小",
+          "footer": "依据源码归纳业务关系，不代表运行时追踪。实线为数据流，点线为执行顺序 / 条件；绿色通过，粉色拒绝；长虚线为推测。影响分析：红色实框为直接影响，红色虚框为间接影响。",
+          "affectedChildren": "包含受影响的规则 / 处理：",
+          "preview": "需求影响预估 · 尚未修改代码",
+          "diff": "代码差异影响 · 非运行时证明",
+          "request": "变更需求",
+          "directDetail": "直接影响 / 修改点",
+          "indirectDetail": "间接影响 / 所属业务",
+          "path": "影响传播路径",
+          "checks": "建议回归检查（不代表已执行）",
+          "impactLimits": "影响分析边界",
+          "impactWarning": "红色只表示本次分析已识别的影响；未标红不等于已证明不受影响。",
+          "overview": "业务总览",
+          "exploreTitle": "沿数据流探索业务",
+          "exploreHelp": "选择一个业务节点，展开它的上下游。已展开节点保留在画布中，无关部分淡化；搜索可定位尚未展开的节点。",
+          "scope": "分析范围",
+          "condition": "校验条件（成立即通过）",
+          "pass": "通过",
+          "failDetail": "拒绝 / 失败",
+          "showRules": "查看 {count} 项校验规则",
+          "inputs": "输入",
+          "outputs": "输出",
+          "states": "状态变化",
+          "unrecorded": "未记录",
+          "evidence": "代码证据",
+          "relations": "直接关联 · 当前方向",
+          "inferred": "推测",
+          "supported": "有源码依据",
+          "control": "执行条件 / 顺序",
+          "data": "数据流",
+          "fail": "拒绝",
+          "impactReason": "影响原因：",
+          "explore": "探索 {label}",
+          "limitations": "分析限制",
+          "questions": "待确认",
+          "noItems": "无已记录项",
+          "direct": "直接影响",
+          "indirect": "间接影响",
+          "status": "{visible} / {total} 个节点 · {mode} · {focus}",
+          "focus": "聚焦 {label}",
+          "choose": "选择节点探索",
+          "noRules": "当前报告未提取详细规则",
+          "impactCount": "影响分析：{count} 个标记节点（详细层可能隐藏）",
+          "noMatch": "未找到匹配节点",
+          "kind_actor": "参与者",
+          "kind_process": "处理环节",
+          "kind_data": "数据",
+          "kind_store": "存储",
+          "kind_outcome": "结果",
+          "kind_rule": "规则",
+          "languageDecision": "语言选择依据"
         }
       }
     </script>
@@ -1120,10 +1228,31 @@
       (() => {
         'use strict';
         const graph = JSON.parse(document.getElementById('graph-data').textContent);
+        const t = (key, values = {}) =>
+          graph.ui[key].replace(/\{([a-zA-Z]+)\}/g, (match, name) => String(values[name] ?? match));
         const $ = (id) => document.getElementById(id);
         const ns = 'http://www.w3.org/2000/svg';
         const byId = new Map(graph.nodes.map((n) => [n.id, n]));
         const core = new Set(graph.nodes.filter((n) => n.core).map((n) => n.id));
+        const impact = graph.impact;
+        const impactNodes = new Map((impact?.nodes || []).map((item) => [item.id, item]));
+        const impactEdges = new Map((impact?.edges || []).map((item) => [item.id, item]));
+        const impactEnabled = () => Boolean(impact && $('impact-toggle').checked);
+        function impactFor(id) {
+          if (impactNodes.has(id)) return impactNodes.get(id);
+          const children = (impact?.nodes || []).filter(
+            (item) => byId.get(item.id)?.parentId === id,
+          );
+          if (!children.length) return null;
+          return {
+            id,
+            level: 'indirect',
+            reason:
+              t('affectedChildren') + children.map((item) => byId.get(item.id).label).join(', '),
+            evidence: children.flatMap((item) => item.evidence),
+            via: [],
+          };
+        }
         let visible = new Set(core),
           focus = null,
           neighborhood = new Set(),
@@ -1201,34 +1330,68 @@
         function details() {
           const panel = $('details');
           panel.replaceChildren();
+          if (impact) {
+            text(panel, 'span', impact.mode === 'requirement' ? t('preview') : t('diff'), 'badge');
+            text(panel, 'h3', t('request'));
+            text(panel, 'p', impact.request);
+            text(panel, 'p', impact.summary);
+            if (impact.comparison)
+              text(panel, 'p', `${impact.comparison.base} → ${impact.comparison.target}`, 'source');
+            if (focus && impactFor(focus)) {
+              const item = impactFor(focus);
+              text(panel, 'h3', item.level === 'direct' ? t('directDetail') : t('indirectDetail'));
+              text(panel, 'p', item.reason);
+              evidence(panel, item.evidence);
+              if (item.via.length) {
+                text(panel, 'h3', t('path'));
+                for (const id of item.via) {
+                  const edge = graph.edges.find((e) => e.id === id);
+                  text(
+                    panel,
+                    'p',
+                    `${byId.get(edge.source).label} → ${byId.get(edge.target).label}：${edge.label}`,
+                  );
+                }
+              }
+            }
+            for (const [field, label] of [
+              ['checks', t('checks')],
+              ['limitations', t('impactLimits')],
+            ]) {
+              text(panel, 'h3', label);
+              for (const item of impact[field]) text(panel, 'p', item);
+            }
+            text(panel, 'p', t('impactWarning'));
+          }
           if (!focus) {
-            text(panel, 'span', '业务总览', 'badge');
-            text(panel, 'h2', '沿数据流探索业务');
-            text(
-              panel,
-              'p',
-              '选择一个业务节点，展开它的上下游。已展开节点保留在画布中，无关部分淡化；搜索可定位尚未展开的节点。',
-            );
-            text(panel, 'h3', '分析范围');
+            text(panel, 'span', t('overview'), 'badge');
+            text(panel, 'h2', t('exploreTitle'));
+            text(panel, 'p', t('exploreHelp'));
+            text(panel, 'h3', t('scope'));
             text(panel, 'p', graph.scope);
+            if (graph.language) {
+              text(panel, 'h3', t('languageDecision'));
+              text(panel, 'p', graph.language.reason);
+              evidence(panel, graph.language.evidence);
+            }
           } else {
             const n = byId.get(focus);
-            text(panel, 'span', n.kind, 'badge');
+            text(panel, 'span', t('kind_' + n.kind), 'badge');
             text(panel, 'h2', n.label);
             text(panel, 'p', n.summary);
             if (n.rule) {
-              text(panel, 'h3', '校验条件（成立即通过）');
+              text(panel, 'h3', t('condition'));
               text(panel, 'p', n.rule.condition, 'source');
-              text(panel, 'h3', '通过');
+              text(panel, 'h3', t('pass'));
               text(panel, 'p', n.rule.onPass);
-              text(panel, 'h3', '拒绝 / 失败');
+              text(panel, 'h3', t('failDetail'));
               text(panel, 'p', n.rule.onFail);
             }
             const rules = graph.nodes.filter(
               (item) => item.parentId === n.id && item.kind === 'rule',
             );
             if (rules.length) {
-              const button = text(panel, 'button', `查看 ${rules.length} 项校验规则`);
+              const button = text(panel, 'button', t('showRules', { count: rules.length }));
               button.onclick = () => {
                 $('logic').checked = true;
                 $('direction').value = 'both';
@@ -1240,18 +1403,19 @@
               };
             }
             for (const [field, label] of [
-              ['inputs', '输入'],
-              ['outputs', '输出'],
-              ['states', '状态变化'],
+              ['inputs', t('inputs')],
+              ['outputs', t('outputs')],
+              ['states', t('states')],
             ]) {
               text(panel, 'h3', label);
               const ul = document.createElement('ul');
               panel.append(ul);
-              for (const item of n[field].length ? n[field] : ['未记录']) text(ul, 'li', item);
+              for (const item of n[field].length ? n[field] : [t('unrecorded')])
+                text(ul, 'li', item);
             }
-            text(panel, 'h3', '代码证据');
+            text(panel, 'h3', t('evidence'));
             evidence(panel, n.evidence);
-            text(panel, 'h3', '直接关联 · 当前方向');
+            text(panel, 'h3', t('relations'));
             for (const e of available().filter(
               (e) => activeEdges.has(e.id) && (e.source === focus || e.target === focus),
             )) {
@@ -1259,27 +1423,35 @@
               box.className = 'relation';
               panel.append(box);
               text(box, 'p', `${byId.get(e.source).label} → ${byId.get(e.target).label}`);
-              text(box, 'p', `${e.label} · ${e.status === 'inferred' ? '推测' : '有源码依据'}`);
               text(
                 box,
                 'p',
-                `${e.flow === 'control' ? '执行条件 / 顺序' : '数据流'}${e.branch ? (e.branch === 'pass' ? ' · 通过' : ' · 拒绝') : ''}`,
+                `${e.label} · ${e.status === 'inferred' ? t('inferred') : t('supported')}`,
+              );
+              text(
+                box,
+                'p',
+                `${e.flow === 'control' ? t('control') : t('data')}${e.branch ? (e.branch === 'pass' ? ' · ' + t('pass') : ' · ' + t('fail')) : ''}`,
               );
               text(box, 'p', e.reason);
+              if (impactEdges.has(e.id)) {
+                text(box, 'p', t('impactReason') + impactEdges.get(e.id).reason);
+                evidence(box, impactEdges.get(e.id).evidence);
+              }
               evidence(box, e.evidence);
               const target = e.source === focus ? e.target : e.source;
-              const button = text(box, 'button', `探索 ${byId.get(target).label}`);
+              const button = text(box, 'button', t('explore', { label: byId.get(target).label }));
               button.onclick = () => select(target);
             }
           }
           for (const [field, label] of [
-            ['limitations', '分析限制'],
-            ['questions', '待确认'],
+            ['limitations', t('limitations')],
+            ['questions', t('questions')],
           ]) {
             text(panel, 'h3', label);
             const ul = document.createElement('ul');
             panel.append(ul);
-            for (const item of graph[field].length ? graph[field] : ['无已记录项'])
+            for (const item of graph[field].length ? graph[field] : [t('noItems')])
               text(ul, 'li', item);
           }
         }
@@ -1319,6 +1491,8 @@
               if (neighborhood.has(e.source) && neighborhood.has(e.target)) activeEdges.add(e.id);
           }
           for (const id of neighborhood) visible.add(id);
+          if (impactEnabled())
+            for (const n of graph.nodes) if (eligible(n) && impactFor(n.id)) visible.add(n.id);
           const w = svg.clientWidth,
             h = svg.clientHeight;
           let index = 0;
@@ -1370,11 +1544,29 @@
               $('nodes').append(el);
               nodeEls.set(id, el);
             }
-            el.style.opacity = !focus || neighborhood.has(id) ? '1' : '.17';
+            const affected = impactEnabled() && impactFor(id);
+            el.style.opacity = affected || !focus || neighborhood.has(id) ? '1' : '.17';
+            el.setAttribute('data-impact', affected ? affected.level : 'none');
+            el.setAttribute(
+              'aria-label',
+              n.label +
+                (affected
+                  ? affected.level === 'direct'
+                    ? ' · ' + t('direct')
+                    : ' · ' + t('indirect')
+                  : ''),
+            );
             el.setAttribute('aria-pressed', String(focus === id));
             el.setAttribute('data-kind', n.kind);
             el.querySelector('circle').setAttribute('r', focus === id ? 27 : 20);
             el.querySelector('circle').setAttribute('fill', focus === id ? '#66518a' : '#202738');
+            el.querySelector('circle').setAttribute('stroke', affected ? '#ff526f' : color(n));
+            el.querySelector('circle').setAttribute('stroke-width', affected ? '4' : '1.5');
+            el.querySelector('circle').setAttribute(
+              'stroke-dasharray',
+              affected?.level === 'indirect' ? '5 3' : 'none',
+            );
+            if (affected) el.querySelector('circle').setAttribute('fill', '#502333');
           }
           $('edges').replaceChildren();
           edgeEls.clear();
@@ -1388,6 +1580,14 @@
               'marker-end': 'url(#arrow)',
             });
             el.style.opacity = !focus || activeEdges.has(e.id) ? '.85' : '.09';
+            if (impactEnabled() && impactEdges.has(e.id)) {
+              el.setAttribute(
+                'class',
+                `edge impacted ${e.status} ${e.flow || 'data'} ${e.branch || ''}`,
+              );
+              el.style.opacity = '1';
+              el.setAttribute('marker-end', 'url(#impact-arrow)');
+            }
             const title = element('title');
             title.textContent = `${e.label}: ${e.reason}`;
             el.append(title);
@@ -1398,14 +1598,22 @@
                 class: `branch-label ${e.branch}`,
                 'text-anchor': 'middle',
               });
-              label.textContent = e.branch === 'pass' ? '通过' : '拒绝';
+              label.textContent = e.branch === 'pass' ? t('pass') : t('fail');
               label.style.opacity = el.style.opacity;
               $('edges').append(label);
               edgeLabels.set(e.id, label);
             }
           }
-          $('status').textContent =
-            `${visible.size} / ${graph.nodes.filter(eligible).length} 个节点 · ${detailed() ? '包含业务逻辑校验' : '业务总览'} · ${focus ? `聚焦 ${byId.get(focus).label}` : '选择节点探索'}${detailed() && !graph.nodes.some((n) => n.kind === 'rule') ? ' · 当前报告未提取详细规则' : ''}`;
+          $('status').textContent = t('status', {
+            visible: visible.size,
+            total: graph.nodes.filter(eligible).length,
+            mode: detailed() ? t('logic') : t('overview'),
+            focus: focus ? t('focus', { label: byId.get(focus).label }) : t('choose'),
+          });
+          if (detailed() && !graph.nodes.some((n) => n.kind === 'rule'))
+            $('status').textContent += ' · ' + t('noRules');
+          if (impactEnabled())
+            $('status').textContent += ' · ' + t('impactCount', { count: impact.nodes.length });
           details();
           settleLayout();
           if (focus) fitView(neighborhood, false);
@@ -1656,6 +1864,22 @@
           { passive: false },
         );
         $('fit').onclick = () => fitView();
+        $('impact-toggle').disabled = !impact;
+        $('impact-toggle').checked = Boolean(impact);
+        $('impact-toggle').onchange = () => {
+          visible = new Set(core);
+          refresh();
+        };
+        $('impact-focus').disabled = !impact || !impact.nodes.length;
+        $('impact-focus').onclick = () => {
+          $('impact-toggle').checked = true;
+          $('logic').checked = true;
+          $('direction').value = 'both';
+          focus = null;
+          visible = new Set(core);
+          refresh();
+          fitView(new Set(impact.nodes.map((item) => item.id)), false);
+        };
         $('zoom-in').onclick = () => zoom(1.2);
         $('zoom-out').onclick = () => zoom(1 / 1.2);
         for (const id of ['depth', 'direction', 'inferred'])
@@ -1706,7 +1930,7 @@
               fitView(neighborhood, false);
             };
           }
-          if (!matches.length) text($('results'), 'span', '未找到匹配节点');
+          if (!matches.length) text($('results'), 'span', t('noMatch'));
         };
         document.title = graph.title;
         $('title').textContent = graph.title;

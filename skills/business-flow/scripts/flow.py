@@ -2,8 +2,10 @@
 """Portable inventory, graph validation and offline report rendering (stdlib only)."""
 import argparse
 import hashlib
+from html import escape
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import subprocess
 import sys
@@ -36,6 +38,24 @@ def strings(value, field):
     require(isinstance(value, list) and all(isinstance(x, str) for x in value), f'{field} must be a string array')
 
 
+def resolve_ui(graph):
+    catalogs = json.loads((Path(__file__).resolve().parent.parent / 'assets/locales.json').read_text(encoding='utf-8'))
+    language = graph.get('language')
+    # Compatibility for old Chinese reports only; new analyses must record a language decision.
+    code = language['code'] if language else 'zh-CN'
+    builtin = 'en' if code.lower().split('-')[0] == 'en' else 'zh-CN' if code.lower() in ('zh', 'zh-cn', 'zh-hans', 'zh-hans-cn') else None
+    overrides = graph.get('ui', {})
+    require(isinstance(overrides, dict), 'ui must be an object')
+    require(all(k in catalogs['en'] and isinstance(v, str) and v.strip() for k, v in overrides.items()), 'Invalid UI translation key or value')
+    if not builtin:
+        require(set(overrides) == set(catalogs['en']), 'This language requires a complete UI translation catalog')
+    ui = {**catalogs.get(builtin, {}), **overrides}
+    for key, value in ui.items():
+        placeholders = lambda text: set(re.findall(r'\{([a-zA-Z]+)\}', text))
+        require(placeholders(value) == placeholders(catalogs['en'][key]), f'UI placeholders mismatch: {key}')
+    return code, ui
+
+
 def validate(graph, repo):
     require(isinstance(graph, dict), 'Graph must be an object')
     require(type(graph.get('version')) is int and graph['version'] == 1, 'Expected version 1')
@@ -47,6 +67,20 @@ def validate(graph, repo):
     require(isinstance(nodes, list) and 1 <= len(nodes) <= 160, 'Expected 1–160 nodes')
     require(isinstance(edges, list) and len(edges) <= 400, 'Expected at most 400 edges')
     hashes, sources = {}, {}
+    def check_refs(refs):
+        require(isinstance(refs, list) and refs, "Impact requires evidence")
+        for ref in refs:
+            require(isinstance(ref, dict), 'Evidence must be an object')
+            path = ref.get('path')
+            file = safe_path(repo, path)
+            if path not in sources:
+                require(file.stat().st_size <= 2_000_000, f'Source too large: {path}')
+                data = file.read_bytes()
+                sources[path] = len(data.decode('utf-8').splitlines())
+                hashes[path] = hashlib.sha256(data).hexdigest()
+            start, end = ref.get('startLine'), ref.get('endLine')
+            require(type(start) is int and type(end) is int and 1 <= start <= end <= sources[path], f'Invalid evidence lines: {path}')
+
     node_ids = set()
     for group, rows in (('node', nodes), ('edge', edges)):
         ids = set()
@@ -83,17 +117,7 @@ def validate(graph, repo):
                     require(row['branch'] in ('pass', 'fail') and row.get('flow') == 'control', 'Invalid rule branch')
             refs = row.get('evidence')
             require(isinstance(refs, list) and refs, f'{group} {row["id"]} requires evidence')
-            for ref in refs:
-                require(isinstance(ref, dict), 'Evidence must be an object')
-                path = ref.get('path')
-                file = safe_path(repo, path)
-                if path not in sources:
-                    require(file.stat().st_size <= 2_000_000, f'Source too large: {path}')
-                    data = file.read_bytes()
-                    sources[path] = len(data.decode('utf-8').splitlines())
-                    hashes[path] = hashlib.sha256(data).hexdigest()
-                start, end = ref.get('startLine'), ref.get('endLine')
-                require(type(start) is int and type(end) is int and 1 <= start <= end <= sources[path], f'Invalid evidence lines: {path}')
+            check_refs(refs)
     by_id = {n['id']: n for n in nodes}
     for node in nodes:
         if node.get('layer') == 'detail':
@@ -108,6 +132,63 @@ def validate(graph, repo):
         if 'branch' in edge:
             require(by_id[edge['source']]['kind'] == 'rule', 'Branch source must be a rule')
     require(any(n['core'] for n in nodes), 'At least one core node is required')
+    impact = graph.get('impact')
+    if impact is not None:
+        require(isinstance(impact, dict), 'impact must be an object')
+        require(impact.get('mode') in ('requirement', 'diff'), 'Invalid impact mode')
+        for field in ('request', 'summary'):
+            require(isinstance(impact.get(field), str) and impact[field].strip(), f'Impact requires {field}')
+        for field in ('checks', 'limitations'):
+            strings(impact.get(field), f'impact.{field}')
+        if impact['mode'] == 'diff':
+            comparison = impact.get('comparison')
+            require(isinstance(comparison, dict), 'Diff impact requires comparison')
+            for field in ('base', 'target'):
+                require(isinstance(comparison.get(field), str) and comparison[field].strip(), f'Comparison requires {field}')
+        edge_map = {e['id']: e for e in edges}
+        impact_nodes = impact.get('nodes')
+        impact_edges = impact.get('edges')
+        require(isinstance(impact_nodes, list) and isinstance(impact_edges, list), 'Impact nodes/edges must be arrays')
+        impacted = {}
+        for item in impact_nodes:
+            require(isinstance(item, dict), 'Impact node must be an object')
+            id = item.get('id')
+            require(isinstance(id, str) and id in by_id and id not in impacted, 'Unknown or duplicate impact node')
+            require(item.get('level') in ('direct', 'indirect'), 'Invalid impact level')
+            require(isinstance(item.get('reason'), str) and item['reason'].strip(), 'Impact reason required')
+            strings(item.get('via'), 'impact.via')
+            require(all(e in edge_map for e in item['via']), 'Unknown impact path edge')
+            check_refs(item.get('evidence'))
+            impacted[id] = item
+        direct = {id for id, item in impacted.items() if item['level'] == 'direct'}
+        for id, item in impacted.items():
+            if item['level'] == 'direct':
+                require(not item['via'], 'Direct impact cannot have a propagation path')
+                continue
+            require(item['via'], 'Indirect impact requires path')
+            path = [edge_map[e] for e in item['via']]
+            require(path[0]['source'] in direct and path[-1]['target'] == id and
+                    all(a['target'] == b['source'] for a, b in zip(path, path[1:])), 'Impact path must connect a direct node to its target')
+        seen = set()
+        for item in impact_edges:
+            require(isinstance(item, dict), 'Impact edge must be an object')
+            id = item.get('id')
+            require(isinstance(id, str) and id in edge_map and id not in seen, 'Unknown or duplicate impact edge')
+            seen.add(id)
+            require(isinstance(item.get('reason'), str) and item['reason'].strip(), 'Impact edge reason required')
+            require(edge_map[id]['source'] in impacted and edge_map[id]['target'] in impacted, 'Impact edge endpoints must be analyzed')
+            check_refs(item.get('evidence'))
+    language = graph.get('language')
+    if language is not None:
+        require(isinstance(language, dict), 'language must be an object')
+        require(isinstance(language.get('code'), str) and re.fullmatch(r'[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})*', language['code']), 'Invalid language code')
+        require(language.get('selection') in ('project', 'override', 'fallback'), 'Invalid language selection')
+        require(isinstance(language.get('reason'), str) and language['reason'].strip(), 'Language rationale required')
+        refs = language.get('evidence')
+        require(isinstance(refs, list), 'Language evidence must be an array')
+        if language['selection'] == 'project' or refs:
+            check_refs(refs)
+    resolve_ui(graph)
     recorded = graph.get('sourceHashes', {})
     require(isinstance(recorded, dict), 'sourceHashes must be an object')
     if recorded:
@@ -181,8 +262,11 @@ def main():
             require(args.out is not None and args.out.suffix.lower() == '.html', '--out must be an HTML path')
             graph['sourceHashes'] = hashes
             assets = Path(__file__).resolve().parent.parent / 'assets'
+            code, graph['ui'] = resolve_ui(graph)
             payload = json.dumps(graph, ensure_ascii=False).replace('&', '\\u0026').replace('<', '\\u003c').replace('>', '\\u003e').replace('\u2028', '\\u2028').replace('\u2029', '\\u2029')
-            html = (assets / 'report.html').read_text(encoding='utf-8').replace('/*__VIEWER__*/', (assets / 'viewer.js').read_text(encoding='utf-8')).replace('__GRAPH_JSON__', payload)
+            template = (assets / 'report.html').read_text(encoding='utf-8')
+            template = re.sub(r'\{\{ui:([A-Za-z]+)\}\}', lambda match: escape(graph['ui'][match[1]], quote=True), template)
+            html = template.replace('__REPORT_LANG__', escape(code, quote=True)).replace('/*__VIEWER__*/', (assets / 'viewer.js').read_text(encoding='utf-8')).replace('__GRAPH_JSON__', payload)
             atomic_write(args.out.with_suffix('.snapshot.json'), json.dumps(graph, ensure_ascii=False, indent=2) + '\n')
             atomic_write(args.out, html)
             print(f'Rendered {args.out}; snapshot {args.out.with_suffix(".snapshot.json")}')

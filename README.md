@@ -86,7 +86,7 @@ npm run dev
 
 ## 独立 Business Flow skill
 
-新增模型无关的 [business-flow skill](skills/business-flow/SKILL.md)，由调用它的大模型分析目标仓库，生成可离线打开的业务图。支持点击节点高亮并展开上下游、方向与深度筛选、搜索、拖拽缩放和代码证据侧栏。可勾选“包含业务逻辑校验”，查看具体校验条件、计算、通过/拒绝分支及状态变化。无需启动 CodeScope 或配置模型 API。
+新增模型无关的 [business-flow skill](skills/business-flow/SKILL.md)，由调用它的大模型分析目标仓库，生成可离线打开的业务图。支持点击节点高亮并展开上下游、方向与深度筛选、搜索、拖拽缩放和代码证据侧栏。可勾选“包含业务逻辑校验”，查看具体校验条件、计算、通过/拒绝分支及状态变化。还支持输入变更需求或检查代码 diff，生成带直接／间接影响红色标记的独立报告；查看 [影响分析示例](docs/business-flow/order-impact.html)。独立 skill 根据目标项目文档与代码注释决定报告语言，统一业务说明与 HTML 控件语言，并保留判断依据。无需启动 CodeScope 或配置模型 API。
 
 查看 [订单交互示例](docs/business-flow/order-service.html)、[调用与验证说明](docs/business-flow/usage.md)，或复制 `skills/business-flow/` 整个目录到其他代理宿主。运行仅需 Python 3.10+；纯文本模型仍需要宿主提供文件与命令工具。
 

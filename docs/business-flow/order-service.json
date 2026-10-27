@@ -1123,5 +1123,17 @@
         }
       ]
     }
-  ]
+  ],
+  "language": {
+    "code": "zh-CN",
+    "selection": "project",
+    "reason": "项目 README 的业务说明为中文；检查了业务源文件，但未发现可用于语言判断的实质性注释，因此以文档为主要依据。代码标识符和字符串不作为语言判定票数。",
+    "evidence": [
+      {
+        "path": "README.md",
+        "startLine": 1,
+        "endLine": 15
+      }
+    ]
+  }
 }

@@ -2,10 +2,28 @@
 (() => {
   'use strict';
   const graph = JSON.parse(document.getElementById('graph-data').textContent);
+  const t = (key, values = {}) =>
+    graph.ui[key].replace(/\{([a-zA-Z]+)\}/g, (match, name) => String(values[name] ?? match));
   const $ = (id) => document.getElementById(id);
   const ns = 'http://www.w3.org/2000/svg';
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const core = new Set(graph.nodes.filter((n) => n.core).map((n) => n.id));
+  const impact = graph.impact;
+  const impactNodes = new Map((impact?.nodes || []).map((item) => [item.id, item]));
+  const impactEdges = new Map((impact?.edges || []).map((item) => [item.id, item]));
+  const impactEnabled = () => Boolean(impact && $('impact-toggle').checked);
+  function impactFor(id) {
+    if (impactNodes.has(id)) return impactNodes.get(id);
+    const children = (impact?.nodes || []).filter((item) => byId.get(item.id)?.parentId === id);
+    if (!children.length) return null;
+    return {
+      id,
+      level: 'indirect',
+      reason: t('affectedChildren') + children.map((item) => byId.get(item.id).label).join(', '),
+      evidence: children.flatMap((item) => item.evidence),
+      via: [],
+    };
+  }
   let visible = new Set(core),
     focus = null,
     neighborhood = new Set(),
@@ -82,32 +100,66 @@
   function details() {
     const panel = $('details');
     panel.replaceChildren();
+    if (impact) {
+      text(panel, 'span', impact.mode === 'requirement' ? t('preview') : t('diff'), 'badge');
+      text(panel, 'h3', t('request'));
+      text(panel, 'p', impact.request);
+      text(panel, 'p', impact.summary);
+      if (impact.comparison)
+        text(panel, 'p', `${impact.comparison.base} → ${impact.comparison.target}`, 'source');
+      if (focus && impactFor(focus)) {
+        const item = impactFor(focus);
+        text(panel, 'h3', item.level === 'direct' ? t('directDetail') : t('indirectDetail'));
+        text(panel, 'p', item.reason);
+        evidence(panel, item.evidence);
+        if (item.via.length) {
+          text(panel, 'h3', t('path'));
+          for (const id of item.via) {
+            const edge = graph.edges.find((e) => e.id === id);
+            text(
+              panel,
+              'p',
+              `${byId.get(edge.source).label} → ${byId.get(edge.target).label}：${edge.label}`,
+            );
+          }
+        }
+      }
+      for (const [field, label] of [
+        ['checks', t('checks')],
+        ['limitations', t('impactLimits')],
+      ]) {
+        text(panel, 'h3', label);
+        for (const item of impact[field]) text(panel, 'p', item);
+      }
+      text(panel, 'p', t('impactWarning'));
+    }
     if (!focus) {
-      text(panel, 'span', '业务总览', 'badge');
-      text(panel, 'h2', '沿数据流探索业务');
-      text(
-        panel,
-        'p',
-        '选择一个业务节点，展开它的上下游。已展开节点保留在画布中，无关部分淡化；搜索可定位尚未展开的节点。',
-      );
-      text(panel, 'h3', '分析范围');
+      text(panel, 'span', t('overview'), 'badge');
+      text(panel, 'h2', t('exploreTitle'));
+      text(panel, 'p', t('exploreHelp'));
+      text(panel, 'h3', t('scope'));
       text(panel, 'p', graph.scope);
+      if (graph.language) {
+        text(panel, 'h3', t('languageDecision'));
+        text(panel, 'p', graph.language.reason);
+        evidence(panel, graph.language.evidence);
+      }
     } else {
       const n = byId.get(focus);
-      text(panel, 'span', n.kind, 'badge');
+      text(panel, 'span', t('kind_' + n.kind), 'badge');
       text(panel, 'h2', n.label);
       text(panel, 'p', n.summary);
       if (n.rule) {
-        text(panel, 'h3', '校验条件（成立即通过）');
+        text(panel, 'h3', t('condition'));
         text(panel, 'p', n.rule.condition, 'source');
-        text(panel, 'h3', '通过');
+        text(panel, 'h3', t('pass'));
         text(panel, 'p', n.rule.onPass);
-        text(panel, 'h3', '拒绝 / 失败');
+        text(panel, 'h3', t('failDetail'));
         text(panel, 'p', n.rule.onFail);
       }
       const rules = graph.nodes.filter((item) => item.parentId === n.id && item.kind === 'rule');
       if (rules.length) {
-        const button = text(panel, 'button', `查看 ${rules.length} 项校验规则`);
+        const button = text(panel, 'button', t('showRules', { count: rules.length }));
         button.onclick = () => {
           $('logic').checked = true;
           $('direction').value = 'both';
@@ -119,18 +171,18 @@
         };
       }
       for (const [field, label] of [
-        ['inputs', '输入'],
-        ['outputs', '输出'],
-        ['states', '状态变化'],
+        ['inputs', t('inputs')],
+        ['outputs', t('outputs')],
+        ['states', t('states')],
       ]) {
         text(panel, 'h3', label);
         const ul = document.createElement('ul');
         panel.append(ul);
-        for (const item of n[field].length ? n[field] : ['未记录']) text(ul, 'li', item);
+        for (const item of n[field].length ? n[field] : [t('unrecorded')]) text(ul, 'li', item);
       }
-      text(panel, 'h3', '代码证据');
+      text(panel, 'h3', t('evidence'));
       evidence(panel, n.evidence);
-      text(panel, 'h3', '直接关联 · 当前方向');
+      text(panel, 'h3', t('relations'));
       for (const e of available().filter(
         (e) => activeEdges.has(e.id) && (e.source === focus || e.target === focus),
       )) {
@@ -138,27 +190,31 @@
         box.className = 'relation';
         panel.append(box);
         text(box, 'p', `${byId.get(e.source).label} → ${byId.get(e.target).label}`);
-        text(box, 'p', `${e.label} · ${e.status === 'inferred' ? '推测' : '有源码依据'}`);
+        text(box, 'p', `${e.label} · ${e.status === 'inferred' ? t('inferred') : t('supported')}`);
         text(
           box,
           'p',
-          `${e.flow === 'control' ? '执行条件 / 顺序' : '数据流'}${e.branch ? (e.branch === 'pass' ? ' · 通过' : ' · 拒绝') : ''}`,
+          `${e.flow === 'control' ? t('control') : t('data')}${e.branch ? (e.branch === 'pass' ? ' · ' + t('pass') : ' · ' + t('fail')) : ''}`,
         );
         text(box, 'p', e.reason);
+        if (impactEdges.has(e.id)) {
+          text(box, 'p', t('impactReason') + impactEdges.get(e.id).reason);
+          evidence(box, impactEdges.get(e.id).evidence);
+        }
         evidence(box, e.evidence);
         const target = e.source === focus ? e.target : e.source;
-        const button = text(box, 'button', `探索 ${byId.get(target).label}`);
+        const button = text(box, 'button', t('explore', { label: byId.get(target).label }));
         button.onclick = () => select(target);
       }
     }
     for (const [field, label] of [
-      ['limitations', '分析限制'],
-      ['questions', '待确认'],
+      ['limitations', t('limitations')],
+      ['questions', t('questions')],
     ]) {
       text(panel, 'h3', label);
       const ul = document.createElement('ul');
       panel.append(ul);
-      for (const item of graph[field].length ? graph[field] : ['无已记录项']) text(ul, 'li', item);
+      for (const item of graph[field].length ? graph[field] : [t('noItems')]) text(ul, 'li', item);
     }
   }
   function select(id) {
@@ -197,6 +253,8 @@
         if (neighborhood.has(e.source) && neighborhood.has(e.target)) activeEdges.add(e.id);
     }
     for (const id of neighborhood) visible.add(id);
+    if (impactEnabled())
+      for (const n of graph.nodes) if (eligible(n) && impactFor(n.id)) visible.add(n.id);
     const w = svg.clientWidth,
       h = svg.clientHeight;
     let index = 0;
@@ -248,11 +306,29 @@
         $('nodes').append(el);
         nodeEls.set(id, el);
       }
-      el.style.opacity = !focus || neighborhood.has(id) ? '1' : '.17';
+      const affected = impactEnabled() && impactFor(id);
+      el.style.opacity = affected || !focus || neighborhood.has(id) ? '1' : '.17';
+      el.setAttribute('data-impact', affected ? affected.level : 'none');
+      el.setAttribute(
+        'aria-label',
+        n.label +
+          (affected
+            ? affected.level === 'direct'
+              ? ' · ' + t('direct')
+              : ' · ' + t('indirect')
+            : ''),
+      );
       el.setAttribute('aria-pressed', String(focus === id));
       el.setAttribute('data-kind', n.kind);
       el.querySelector('circle').setAttribute('r', focus === id ? 27 : 20);
       el.querySelector('circle').setAttribute('fill', focus === id ? '#66518a' : '#202738');
+      el.querySelector('circle').setAttribute('stroke', affected ? '#ff526f' : color(n));
+      el.querySelector('circle').setAttribute('stroke-width', affected ? '4' : '1.5');
+      el.querySelector('circle').setAttribute(
+        'stroke-dasharray',
+        affected?.level === 'indirect' ? '5 3' : 'none',
+      );
+      if (affected) el.querySelector('circle').setAttribute('fill', '#502333');
     }
     $('edges').replaceChildren();
     edgeEls.clear();
@@ -264,6 +340,11 @@
         'marker-end': 'url(#arrow)',
       });
       el.style.opacity = !focus || activeEdges.has(e.id) ? '.85' : '.09';
+      if (impactEnabled() && impactEdges.has(e.id)) {
+        el.setAttribute('class', `edge impacted ${e.status} ${e.flow || 'data'} ${e.branch || ''}`);
+        el.style.opacity = '1';
+        el.setAttribute('marker-end', 'url(#impact-arrow)');
+      }
       const title = element('title');
       title.textContent = `${e.label}: ${e.reason}`;
       el.append(title);
@@ -274,14 +355,22 @@
           class: `branch-label ${e.branch}`,
           'text-anchor': 'middle',
         });
-        label.textContent = e.branch === 'pass' ? '通过' : '拒绝';
+        label.textContent = e.branch === 'pass' ? t('pass') : t('fail');
         label.style.opacity = el.style.opacity;
         $('edges').append(label);
         edgeLabels.set(e.id, label);
       }
     }
-    $('status').textContent =
-      `${visible.size} / ${graph.nodes.filter(eligible).length} 个节点 · ${detailed() ? '包含业务逻辑校验' : '业务总览'} · ${focus ? `聚焦 ${byId.get(focus).label}` : '选择节点探索'}${detailed() && !graph.nodes.some((n) => n.kind === 'rule') ? ' · 当前报告未提取详细规则' : ''}`;
+    $('status').textContent = t('status', {
+      visible: visible.size,
+      total: graph.nodes.filter(eligible).length,
+      mode: detailed() ? t('logic') : t('overview'),
+      focus: focus ? t('focus', { label: byId.get(focus).label }) : t('choose'),
+    });
+    if (detailed() && !graph.nodes.some((n) => n.kind === 'rule'))
+      $('status').textContent += ' · ' + t('noRules');
+    if (impactEnabled())
+      $('status').textContent += ' · ' + t('impactCount', { count: impact.nodes.length });
     details();
     settleLayout();
     if (focus) fitView(neighborhood, false);
@@ -517,6 +606,22 @@
     { passive: false },
   );
   $('fit').onclick = () => fitView();
+  $('impact-toggle').disabled = !impact;
+  $('impact-toggle').checked = Boolean(impact);
+  $('impact-toggle').onchange = () => {
+    visible = new Set(core);
+    refresh();
+  };
+  $('impact-focus').disabled = !impact || !impact.nodes.length;
+  $('impact-focus').onclick = () => {
+    $('impact-toggle').checked = true;
+    $('logic').checked = true;
+    $('direction').value = 'both';
+    focus = null;
+    visible = new Set(core);
+    refresh();
+    fitView(new Set(impact.nodes.map((item) => item.id)), false);
+  };
   $('zoom-in').onclick = () => zoom(1.2);
   $('zoom-out').onclick = () => zoom(1 / 1.2);
   for (const id of ['depth', 'direction', 'inferred'])
@@ -565,7 +670,7 @@
         fitView(neighborhood, false);
       };
     }
-    if (!matches.length) text($('results'), 'span', '未找到匹配节点');
+    if (!matches.length) text($('results'), 'span', t('noMatch'));
   };
   document.title = graph.title;
   $('title').textContent = graph.title;

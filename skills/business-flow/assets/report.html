@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="__REPORT_LANG__">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Business Flow</title>
+    <title>{{ui:appTitle}}</title>
     <style>
       :root {
         color-scheme: dark;
@@ -147,6 +147,14 @@
       .branch-label.fail {
         fill: #ec8796;
       }
+      .edge.impacted {
+        stroke: #ff526f;
+        stroke-width: 3;
+      }
+      .node[data-impact='direct'] text,
+      .node[data-impact='indirect'] text {
+        fill: #ff9aac;
+      }
       .edge.inferred {
         stroke-dasharray: 6 5;
       }
@@ -285,42 +293,45 @@
   </head>
   <body>
     <header>
-      <small>BUSINESS FLOW / SOURCE EXPLORER</small>
+      <small>{{ui:brand}}</small>
       <h1 id="title"></h1>
       <p id="scope"></p>
     </header>
-    <nav aria-label="图谱控制">
+    <nav aria-label="{{ui:controls}}">
       <input
         id="search"
         type="search"
-        placeholder="搜索业务节点…"
-        aria-label="搜索业务节点"
+        placeholder="{{ui:searchPlaceholder}}"
+        aria-label="{{ui:search}}"
       /><label
-        >方向
+        >{{ui:direction}}
         <select id="direction">
-          <option value="both">上下游</option>
-          <option value="upstream">仅上游</option>
-          <option value="downstream">仅下游</option>
+          <option value="both">{{ui:both}}</option>
+          <option value="upstream">{{ui:upstream}}</option>
+          <option value="downstream">{{ui:downstream}}</option>
         </select></label
       ><label
-        >深度
+        >{{ui:depth}}
         <select id="depth">
-          <option value="1">1 层</option>
-          <option value="2">2 层</option>
+          <option value="1">{{ui:depthOne}}</option>
+          <option value="2">{{ui:depthTwo}}</option>
         </select></label
-      ><label><input id="logic" type="checkbox" /> 包含业务逻辑校验</label
-      ><label><input id="inferred" type="checkbox" /> 显示推测关系</label
-      ><button id="collapse">收起展开</button><button id="reset">返回总览</button>
+      ><label><input id="logic" type="checkbox" /> {{ui:logic}}</label
+      ><label><input id="inferred" type="checkbox" /> {{ui:inferredToggle}}</label
+      ><label><input id="impact-toggle" type="checkbox" /> {{ui:impactToggle}}</label
+      ><button id="impact-focus">{{ui:impactFocus}}</button
+      ><button id="collapse">{{ui:collapse}}</button><button id="reset">{{ui:reset}}</button>
       <div class="legend">
-        <span style="--dot: #efaa72">校验规则</span><span style="--dot: #b39af5">业务处理</span
-        ><span style="--dot: #6bbac5">数据 / 存储</span
-        ><span style="--dot: #d9b77a">参与者 / 结果</span>
+        <span style="--dot: #efaa72">{{ui:ruleLegend}}</span
+        ><span style="--dot: #b39af5">{{ui:processLegend}}</span
+        ><span style="--dot: #6bbac5">{{ui:dataLegend}}</span
+        ><span style="--dot: #d9b77a">{{ui:actorLegend}}</span>
       </div>
       <div id="results" aria-live="polite"></div>
     </nav>
     <main>
-      <section class="canvas" aria-label="业务流程画布">
-        <svg id="graph" aria-label="可交互业务图">
+      <section class="canvas" aria-label="{{ui:canvas}}">
+        <svg id="graph" aria-label="{{ui:graph}}">
           <defs>
             <marker
               id="arrow"
@@ -333,6 +344,17 @@
             >
               <path d="M 0 0 L 10 5 L 0 10 z" fill="#a795d0" />
             </marker>
+            <marker
+              id="impact-arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#ff526f" />
+            </marker>
           </defs>
           <g id="viewport">
             <g id="edges"></g>
@@ -340,19 +362,16 @@
           </g>
         </svg>
         <div id="status" aria-live="polite"></div>
-        <div class="hint">点击节点探索 · 再次点击收起 · 拖拽布局 · 滚轮缩放</div>
+        <div class="hint">{{ui:hint}}</div>
         <div class="zoom">
-          <button id="fit" aria-label="适应全图">适应全图</button
-          ><button id="zoom-in" aria-label="放大">＋</button
-          ><button id="zoom-out" aria-label="缩小">－</button>
+          <button id="fit" aria-label="{{ui:fit}}">{{ui:fit}}</button
+          ><button id="zoom-in" aria-label="{{ui:zoomIn}}">＋</button
+          ><button id="zoom-out" aria-label="{{ui:zoomOut}}">－</button>
         </div>
       </section>
       <aside id="details" aria-live="polite"></aside>
     </main>
-    <footer>
-      依据源码归纳业务关系，不代表运行时追踪。实线为数据流，点线为执行顺序 /
-      条件；绿色通过，红色拒绝；长虚线为推测。
-    </footer>
+    <footer>{{ui:footer}}</footer>
     <script id="graph-data" type="application/json">
       __GRAPH_JSON__
     </script>

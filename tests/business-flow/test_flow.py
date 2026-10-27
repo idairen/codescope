@@ -108,9 +108,66 @@ class FlowTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     flow.validate(changed, repo)
 
+    def test_impact_contract_evidence_paths_and_diff_baseline(self):
+        graph = json.loads((ROOT / 'docs/business-flow/order-impact.json').read_text())
+        repo = ROOT / 'examples/order-service'
+        flow.validate(graph, repo)
+        for mutate, message in [
+            (lambda g: g['impact']['nodes'][0].update(id='missing'), 'impact node'),
+            (lambda g: g['impact']['nodes'][1].update(via=['not-an-edge']), 'path edge'),
+            (lambda g: g['impact']['nodes'][1].update(via=['read']), 'connect'),
+            (lambda g: g['impact']['nodes'][0].update(evidence=[]), 'evidence'),
+            (lambda g: g['impact']['edges'][0].update(id='not-an-edge'), 'impact edge'),
+            (lambda g: g['impact'].update(mode='diff'), 'comparison'),
+        ]:
+            with self.subTest(message=message):
+                changed=copy.deepcopy(graph); mutate(changed)
+                with self.assertRaisesRegex(ValueError,message): flow.validate(changed,repo)
+        graph['impact'].update(mode='diff', comparison={'base':'abc123','target':'working-tree'})
+        flow.validate(graph,repo)
+
+    def test_impact_only_evidence_is_hashed_and_checked_for_staleness(self):
+        (self.repo / 'requirement.md').write_text('Source contract\n')
+        self.graph['impact'] = dict(mode='requirement', request='Change save', summary='Preview', checks=[], limitations=[], edges=[],
+            nodes=[dict(id='save',level='direct',reason='Change this contract',via=[],evidence=[dict(path='requirement.md',startLine=1,endLine=1)])])
+        self.graph['sourceHashes'] = flow.validate(self.graph,self.repo)
+        self.assertIn('requirement.md',self.graph['sourceHashes'])
+        (self.repo / 'requirement.md').write_text('Changed contract\n')
+        with self.assertRaisesRegex(ValueError,'hashes changed'): flow.validate(self.graph,self.repo)
+
+    def test_english_report_localizes_controls_and_dynamic_messages(self):
+        (self.repo / 'README.md').write_text('Order service documentation\n')
+        (self.repo / 'source.py').write_text('# Persist the validated order\ndef save():\n    return 1\n')
+        self.graph['language'] = dict(code='en',selection='project',reason='English documentation and business comments',evidence=[dict(path='README.md',startLine=1,endLine=1),dict(path='source.py',startLine=1,endLine=1)])
+        graphfile=self.repo/'english.json'; graphfile.write_text(json.dumps(self.graph))
+        output=self.repo/'english.html'
+        result=subprocess.run(['python3',str(SCRIPT),'render',str(graphfile),'--repo',str(self.repo),'--out',str(output)],capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        html=output.read_text()
+        self.assertIn('lang="en"',html)
+        self.assertIn('Include business rules',html)
+        self.assertIn('No matching nodes',html)
+        self.assertNotRegex(html,r'[\u4e00-\u9fff]')
+        self.assertNotIn('{{ui:',html)
+        snapshot=json.loads(output.with_suffix('.snapshot.json').read_text())
+        self.assertIn('README.md',snapshot['sourceHashes'])
+
+    def test_custom_language_requires_complete_catalog_and_safe_placeholders(self):
+        self.graph['language']=dict(code='ja',selection='override',reason='User requested Japanese',evidence=[])
+        with self.assertRaisesRegex(ValueError,'complete UI'): flow.validate(self.graph,self.repo)
+        catalogs=json.loads((ROOT/'skills/business-flow/assets/locales.json').read_text())
+        self.graph['ui']=catalogs['en'].copy()
+        flow.validate(self.graph,self.repo)
+        self.graph['ui']['showRules']='Rules'
+        with self.assertRaisesRegex(ValueError,'placeholders'): flow.validate(self.graph,self.repo)
+        self.graph.pop('ui')
+        self.graph['language']['code']='en'
+        self.graph['language']['selection']='project'
+        with self.assertRaisesRegex(ValueError,'evidence'): flow.validate(self.graph,self.repo)
+
     def test_actual_order_example(self):
         graph = json.loads((ROOT / 'docs/business-flow/order-service.json').read_text())
-        self.assertEqual(len(flow.validate(graph, ROOT / 'examples/order-service')), 5)
+        self.assertEqual(len(flow.validate(graph, ROOT / 'examples/order-service')), 6)
 
 
 if __name__ == '__main__':

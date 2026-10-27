@@ -1,0 +1,1127 @@
+{
+  "version": 1,
+  "title": "订单创建与支付 · 业务数据流",
+  "scope": "分析随附订单示例的 6 个源文件：创建、库存预占、内存存储与支付状态更新。",
+  "limitations": [
+    "静态源码解读，未执行请求或采集运行时链路。",
+    "路由注册是空实现；支付未连接外部支付网关。",
+    "数据仅存于内存，未实现持久化、事务、鉴权或幂等保障。",
+    "本图由当前代理依据示例源码生成，不代表已验证其他模型宿主的调用效果。",
+    "详细视图按源码的 JavaScript 短路与比较语义展开，不额外假定整数、有限数、SKU 合法性或幂等校验。通过/拒绝边表示执行条件，不代表独立数据传输。"
+  ],
+  "questions": ["库存已扣减后若后续写入失败，是否需要补偿？当前示例未实现。"],
+  "nodes": [
+    {
+      "id": "create",
+      "label": "创建订单",
+      "kind": "process",
+      "summary": "校验请求、计算金额、预占库存后，将订单写入内存。",
+      "core": true,
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        }
+      ],
+      "inputs": ["SKU、数量、单价"],
+      "outputs": ["订单 ID、金额"],
+      "states": ["created"]
+    },
+    {
+      "id": "orders",
+      "label": "订单存储",
+      "kind": "store",
+      "summary": "Map 中的订单；不是持久数据库。",
+      "core": true,
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 1,
+          "endLine": 12
+        }
+      ],
+      "inputs": ["新订单"],
+      "outputs": ["按 ID 查询的订单"],
+      "states": ["created → paid"]
+    },
+    {
+      "id": "pay",
+      "label": "处理支付",
+      "kind": "process",
+      "summary": "读取订单核对金额，写入支付记录，再修改订单状态；未接入支付网关。",
+      "core": true,
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ],
+      "inputs": ["订单 ID、支付金额"],
+      "outputs": ["已付款订单"],
+      "states": ["金额不匹配时抛错"]
+    },
+    {
+      "id": "stock",
+      "label": "库存预占",
+      "kind": "process",
+      "summary": "检查库存后扣减内存中的可用数量；库存不足时抛错。",
+      "core": false,
+      "evidence": [
+        {
+          "path": "src/inventory.ts",
+          "startLine": 1,
+          "endLine": 8
+        }
+      ],
+      "inputs": ["SKU、数量"],
+      "outputs": ["库存扣减"],
+      "states": ["可用库存减少"]
+    },
+    {
+      "id": "validate",
+      "label": "订单校验与计价",
+      "kind": "process",
+      "summary": "拒绝缺失 SKU、非正数量、负单价；数量乘以单价得到总额。",
+      "core": false,
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ],
+      "inputs": ["SKU、数量、单价"],
+      "outputs": ["总金额"],
+      "states": ["无效参数时抛错"]
+    },
+    {
+      "id": "payments",
+      "label": "支付记录",
+      "kind": "store",
+      "summary": "支付记录保存在内存数组中。",
+      "core": false,
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 13,
+          "endLine": 16
+        }
+      ],
+      "inputs": ["订单 ID、金额"],
+      "outputs": ["记录数量"],
+      "states": []
+    },
+    {
+      "id": "paid",
+      "label": "更新已付状态",
+      "kind": "process",
+      "summary": "查找订单并将其 status 修改为 paid。",
+      "core": false,
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        }
+      ],
+      "inputs": ["订单 ID"],
+      "outputs": ["已更新订单"],
+      "states": ["created → paid"]
+    },
+    {
+      "id": "rule-sku",
+      "label": "SKU 真值检查",
+      "kind": "rule",
+      "layer": "detail",
+      "parentId": "create",
+      "summary": "原始条件 !input.sku；只检查 JavaScript 真值，不验证 SKU 存在或去除空白。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ],
+      "rule": {
+        "condition": "Boolean(input.sku)",
+        "onPass": "继续检查数量",
+        "onFail": "抛出 Error(\"订单参数无效\")；不计价、不扣库存、不保存"
+      }
+    },
+    {
+      "id": "rule-quantity",
+      "label": "拒绝非正数量",
+      "kind": "rule",
+      "layer": "detail",
+      "parentId": "create",
+      "summary": "原始拒绝条件 quantity <= 0；没有整数、有限数或运行时类型检查。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ],
+      "rule": {
+        "condition": "!(input.quantity <= 0)",
+        "onPass": "继续检查单价",
+        "onFail": "抛出 Error(\"订单参数无效\")；终止创建"
+      }
+    },
+    {
+      "id": "rule-price",
+      "label": "拒绝负单价",
+      "kind": "rule",
+      "layer": "detail",
+      "parentId": "create",
+      "summary": "原始拒绝条件 price < 0；允许零价，未校验 NaN、无穷值或运行时类型。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ],
+      "rule": {
+        "condition": "!(input.price < 0)",
+        "onPass": "计算订单金额",
+        "onFail": "抛出 Error(\"订单参数无效\")；终止创建"
+      }
+    },
+    {
+      "id": "calculate-total",
+      "label": "计算订单总额",
+      "kind": "process",
+      "layer": "detail",
+      "parentId": "create",
+      "summary": "total = quantity * price；没有货币精度或舍入处理。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 4,
+          "endLine": 6
+        },
+        {
+          "path": "src/orders.ts",
+          "startLine": 6,
+          "endLine": 6
+        }
+      ]
+    },
+    {
+      "id": "rule-stock",
+      "label": "可用库存是否足够",
+      "kind": "rule",
+      "layer": "detail",
+      "parentId": "create",
+      "summary": "不存在的 SKU 按库存 0 比较；检查通过后才扣减库存。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/inventory.ts",
+          "startLine": 2,
+          "endLine": 8
+        }
+      ],
+      "rule": {
+        "condition": "(inventory.get(sku) ?? 0) >= quantity",
+        "onPass": "扣减可用库存，随后保存订单",
+        "onFail": "抛出 Error(\"库存不足\")；本次不扣减、不保存订单"
+      }
+    },
+    {
+      "id": "invalid-order",
+      "label": "拒绝：订单参数无效",
+      "kind": "outcome",
+      "layer": "detail",
+      "parentId": "create",
+      "summary": "前三项短路校验中任一拒绝，即抛出 Error(\"订单参数无效\")。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "id": "no-stock",
+      "label": "拒绝：库存不足",
+      "kind": "outcome",
+      "layer": "detail",
+      "parentId": "create",
+      "summary": "库存校验失败时终止创建；示例没有 HTTP 错误映射。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/inventory.ts",
+          "startLine": 2,
+          "endLine": 8
+        }
+      ]
+    },
+    {
+      "id": "rule-order-exists",
+      "label": "支付前订单存在性",
+      "kind": "rule",
+      "layer": "detail",
+      "parentId": "pay",
+      "summary": "按订单 ID 查询 Map，找不到订单则抛错。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        },
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ],
+      "rule": {
+        "condition": "Boolean(orders.get(input.orderId))",
+        "onPass": "返回订单并核对支付金额",
+        "onFail": "抛出 Error(\"订单不存在\")；不写支付记录"
+      }
+    },
+    {
+      "id": "rule-amount",
+      "label": "支付金额严格匹配",
+      "kind": "rule",
+      "layer": "detail",
+      "parentId": "pay",
+      "summary": "原始拒绝条件 order.total !== input.amount；不做金额转换或容差比较。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ],
+      "rule": {
+        "condition": "order.total === input.amount",
+        "onPass": "保存支付记录，随后更新订单状态",
+        "onFail": "抛出 Error(\"支付金额不匹配\")；不记录支付、不修改订单状态"
+      }
+    },
+    {
+      "id": "missing-order",
+      "label": "拒绝：订单不存在",
+      "kind": "outcome",
+      "layer": "detail",
+      "parentId": "pay",
+      "summary": "findOrder 未命中时抛出 Error(\"订单不存在\")；既可发生在支付入口，也可发生在更新状态时。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        }
+      ]
+    },
+    {
+      "id": "amount-mismatch",
+      "label": "拒绝：金额不匹配",
+      "kind": "outcome",
+      "layer": "detail",
+      "parentId": "pay",
+      "summary": "抛出 Error(\"支付金额不匹配\")；当前示例未进行真实扣款。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "id": "rule-update-exists",
+      "label": "更新前再次查订单",
+      "kind": "rule",
+      "layer": "detail",
+      "parentId": "paid",
+      "summary": "markOrderPaid 再次调用 findOrder；支付记录在这一步之前已写入，源码未提供事务回滚。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ],
+      "rule": {
+        "condition": "Boolean(orders.get(id))",
+        "onPass": "将已存订单的 status 改成 paid",
+        "onFail": "抛出 Error(\"订单不存在\")；已有支付记录不会自动撤销"
+      }
+    },
+    {
+      "id": "write-paid",
+      "label": "写入 paid 状态",
+      "kind": "process",
+      "layer": "detail",
+      "parentId": "paid",
+      "summary": "原地修改 order.status 为 paid，返回该订单；没有重复支付或原状态检查。",
+      "core": false,
+      "inputs": [],
+      "outputs": [],
+      "states": [],
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "validate",
+      "source": "create",
+      "target": "validate",
+      "label": "校验订单输入",
+      "status": "supported",
+      "reason": "createOrder 调用 validateOrder 和 calculateTotal。",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 5,
+          "endLine": 6
+        },
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 6
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "total",
+      "source": "validate",
+      "target": "create",
+      "label": "返回计算金额",
+      "status": "supported",
+      "reason": "calculateTotal 返回数量乘单价，createOrder 接收 total。",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 6,
+          "endLine": 6
+        },
+        {
+          "path": "src/validation.ts",
+          "startLine": 4,
+          "endLine": 6
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "reserve",
+      "source": "create",
+      "target": "stock",
+      "label": "预占 SKU 数量",
+      "status": "supported",
+      "reason": "createOrder 调用 reserveInventory，其实现检查并扣减库存。",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 7,
+          "endLine": 7
+        },
+        {
+          "path": "src/inventory.ts",
+          "startLine": 5,
+          "endLine": 8
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "save",
+      "source": "create",
+      "target": "orders",
+      "label": "保存 created 订单",
+      "status": "supported",
+      "reason": "saveOrder 将含 total 和 status 的订单写入 Map。",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 8,
+          "endLine": 8
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 3,
+          "endLine": 7
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "read",
+      "source": "orders",
+      "target": "pay",
+      "label": "读取订单与金额",
+      "status": "supported",
+      "reason": "payOrder 通过 findOrder 读取订单并校验金额。",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 3,
+          "endLine": 4
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "record",
+      "source": "pay",
+      "target": "payments",
+      "label": "写入支付记录",
+      "status": "supported",
+      "reason": "金额匹配后调用 savePayment，将 ID 和金额加入数组。",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 4,
+          "endLine": 5
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 13,
+          "endLine": 16
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "mark",
+      "source": "pay",
+      "target": "paid",
+      "label": "请求更新订单状态",
+      "status": "supported",
+      "reason": "payOrder 调用 markOrderPaid。",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 6,
+          "endLine": 6
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "update",
+      "source": "paid",
+      "target": "orders",
+      "label": "写入 paid 状态",
+      "status": "supported",
+      "reason": "markOrderPaid 修改已存订单的 status。",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        }
+      ],
+      "view": "overview"
+    },
+    {
+      "id": "detail-start",
+      "source": "create",
+      "target": "validate",
+      "label": "提交 SKU、数量、单价进行校验",
+      "view": "detail",
+      "flow": "data",
+      "status": "supported",
+      "reason": "提交 SKU、数量、单价进行校验",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        }
+      ]
+    },
+    {
+      "id": "detail-validation",
+      "source": "validate",
+      "target": "rule-sku",
+      "label": "按 OR 短路表达式先检查 SKU",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "按 OR 短路表达式先检查 SKU",
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ]
+    },
+    {
+      "id": "rule-sku-pass",
+      "source": "rule-sku",
+      "target": "rule-quantity",
+      "label": "SKU 为真，继续检查数量",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "SKU 为真，继续检查数量",
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        },
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        }
+      ],
+      "branch": "pass"
+    },
+    {
+      "id": "rule-sku-fail",
+      "source": "rule-sku",
+      "target": "invalid-order",
+      "label": "条件不成立，抛出订单参数无效",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "条件不成立，抛出订单参数无效",
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ],
+      "branch": "fail"
+    },
+    {
+      "id": "rule-quantity-pass",
+      "source": "rule-quantity",
+      "target": "rule-price",
+      "label": "数量不满足 <= 0，继续检查单价",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "数量不满足 <= 0，继续检查单价",
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        },
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        }
+      ],
+      "branch": "pass"
+    },
+    {
+      "id": "rule-quantity-fail",
+      "source": "rule-quantity",
+      "target": "invalid-order",
+      "label": "条件不成立，抛出订单参数无效",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "条件不成立，抛出订单参数无效",
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ],
+      "branch": "fail"
+    },
+    {
+      "id": "rule-price-pass",
+      "source": "rule-price",
+      "target": "calculate-total",
+      "label": "单价不满足 < 0，继续计价",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "单价不满足 < 0，继续计价",
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        },
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        }
+      ],
+      "branch": "pass"
+    },
+    {
+      "id": "rule-price-fail",
+      "source": "rule-price",
+      "target": "invalid-order",
+      "label": "条件不成立，抛出订单参数无效",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "条件不成立，抛出订单参数无效",
+      "evidence": [
+        {
+          "path": "src/validation.ts",
+          "startLine": 1,
+          "endLine": 3
+        }
+      ],
+      "branch": "fail"
+    },
+    {
+      "id": "detail-total",
+      "source": "calculate-total",
+      "target": "rule-stock",
+      "label": "计算金额后检查库存",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "计算金额后检查库存",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        },
+        {
+          "path": "src/inventory.ts",
+          "startLine": 2,
+          "endLine": 8
+        }
+      ]
+    },
+    {
+      "id": "rule-stock-pass",
+      "source": "rule-stock",
+      "target": "stock",
+      "label": "库存足够，扣减可用库存",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "库存足够，扣减可用库存",
+      "evidence": [
+        {
+          "path": "src/inventory.ts",
+          "startLine": 2,
+          "endLine": 8
+        }
+      ],
+      "branch": "pass"
+    },
+    {
+      "id": "rule-stock-fail",
+      "source": "rule-stock",
+      "target": "no-stock",
+      "label": "库存不足，抛错并终止",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "库存不足，抛错并终止",
+      "evidence": [
+        {
+          "path": "src/inventory.ts",
+          "startLine": 2,
+          "endLine": 8
+        }
+      ],
+      "branch": "fail"
+    },
+    {
+      "id": "detail-save-order",
+      "source": "stock",
+      "target": "orders",
+      "label": "库存预占成功后执行 saveOrder",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "库存预占成功后执行 saveOrder",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 3,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "id": "detail-total-data",
+      "source": "calculate-total",
+      "target": "orders",
+      "label": "保存 total；前提是库存预占已成功",
+      "view": "detail",
+      "flow": "data",
+      "status": "supported",
+      "reason": "保存 total；前提是库存预占已成功",
+      "evidence": [
+        {
+          "path": "src/orders.ts",
+          "startLine": 4,
+          "endLine": 9
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 3,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "id": "detail-pay-start",
+      "source": "pay",
+      "target": "rule-order-exists",
+      "label": "按 orderId 查询订单",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "按 orderId 查询订单",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ]
+    },
+    {
+      "id": "detail-read-order",
+      "source": "orders",
+      "target": "rule-order-exists",
+      "label": "读取 Map 中的订单",
+      "view": "detail",
+      "flow": "data",
+      "status": "supported",
+      "reason": "读取 Map 中的订单",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ]
+    },
+    {
+      "id": "rule-order-exists-pass",
+      "source": "rule-order-exists",
+      "target": "rule-amount",
+      "label": "找到订单，核对金额",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "找到订单，核对金额",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ],
+      "branch": "pass"
+    },
+    {
+      "id": "rule-order-exists-fail",
+      "source": "rule-order-exists",
+      "target": "missing-order",
+      "label": "订单不存在，终止支付",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "订单不存在，终止支付",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ],
+      "branch": "fail"
+    },
+    {
+      "id": "rule-amount-pass",
+      "source": "rule-amount",
+      "target": "payments",
+      "label": "金额严格匹配，写入支付记录",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "金额严格匹配，写入支付记录",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 13,
+          "endLine": 16
+        }
+      ],
+      "branch": "pass"
+    },
+    {
+      "id": "rule-amount-fail",
+      "source": "rule-amount",
+      "target": "amount-mismatch",
+      "label": "金额不匹配，终止支付",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "金额不匹配，终止支付",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ],
+      "branch": "fail"
+    },
+    {
+      "id": "detail-payment-data",
+      "source": "pay",
+      "target": "payments",
+      "label": "写入 orderId 与 amount；前提是金额校验通过",
+      "view": "detail",
+      "flow": "data",
+      "status": "supported",
+      "reason": "写入 orderId 与 amount；前提是金额校验通过",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 13,
+          "endLine": 16
+        }
+      ]
+    },
+    {
+      "id": "detail-payment-then-update",
+      "source": "payments",
+      "target": "paid",
+      "label": "支付记录写入后调用 markOrderPaid",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "支付记录写入后调用 markOrderPaid",
+      "evidence": [
+        {
+          "path": "src/payments.ts",
+          "startLine": 2,
+          "endLine": 7
+        }
+      ]
+    },
+    {
+      "id": "detail-update-start",
+      "source": "paid",
+      "target": "rule-update-exists",
+      "label": "更新状态前再次调用 findOrder",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "更新状态前再次调用 findOrder",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ]
+    },
+    {
+      "id": "detail-update-read",
+      "source": "orders",
+      "target": "rule-update-exists",
+      "label": "按 ID 再次读取订单",
+      "view": "detail",
+      "flow": "data",
+      "status": "supported",
+      "reason": "按 ID 再次读取订单",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ]
+    },
+    {
+      "id": "rule-update-exists-pass",
+      "source": "rule-update-exists",
+      "target": "write-paid",
+      "label": "找到订单，修改状态",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "找到订单，修改状态",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ],
+      "branch": "pass"
+    },
+    {
+      "id": "rule-update-exists-fail",
+      "source": "rule-update-exists",
+      "target": "missing-order",
+      "label": "查询失败，抛出订单不存在",
+      "view": "detail",
+      "flow": "control",
+      "status": "supported",
+      "reason": "查询失败，抛出订单不存在",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        },
+        {
+          "path": "src/repository.ts",
+          "startLine": 8,
+          "endLine": 12
+        }
+      ],
+      "branch": "fail"
+    },
+    {
+      "id": "detail-write-paid",
+      "source": "write-paid",
+      "target": "orders",
+      "label": "写入 status = paid",
+      "view": "detail",
+      "flow": "data",
+      "status": "supported",
+      "reason": "写入 status = paid",
+      "evidence": [
+        {
+          "path": "src/repository.ts",
+          "startLine": 17,
+          "endLine": 21
+        }
+      ]
+    }
+  ]
+}

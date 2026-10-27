@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.codescope/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+.business-flow/
+__pycache__/
+*.pyc

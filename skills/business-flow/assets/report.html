@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Business Flow</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font:
+          14px/1.6 system-ui,
+          sans-serif;
+        color: #d8e0ee;
+        background: #10141c;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+      }
+      header {
+        padding: 20px 28px 14px;
+        border-bottom: 1px solid #293140;
+        background: #151b25;
+      }
+      header small {
+        color: #9dabe0;
+        letter-spacing: 0.18em;
+        font-size: 10px;
+      }
+      h1 {
+        font-size: 23px;
+        margin: 3px 0;
+      }
+      header p {
+        margin: 0;
+        color: #97a5b9;
+        font-size: 12px;
+      }
+      nav {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 12px 28px;
+        background: #151b25;
+        border-bottom: 1px solid #293140;
+      }
+      input,
+      select,
+      button {
+        font: inherit;
+        color: inherit;
+        background: #202937;
+        border: 1px solid #3b475d;
+        border-radius: 7px;
+        padding: 7px 10px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover {
+        background: #32415c;
+      }
+      button:focus-visible,
+      select:focus-visible,
+      input:focus-visible {
+        outline: 2px solid #b6a1ff;
+      }
+      #search {
+        width: 190px;
+      }
+      label {
+        font-size: 12px;
+        color: #b2bed0;
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 330px;
+        height: calc(100dvh - 190px);
+        min-height: 460px;
+      }
+      .canvas {
+        position: relative;
+        overflow: hidden;
+        background: radial-gradient(ellipse at 50% 40%, #1c2333 0%, #10141c 70%);
+      }
+      svg {
+        width: 100%;
+        height: 100%;
+        touch-action: none;
+      }
+      #graph {
+        cursor: grab;
+      }
+      .node {
+        cursor: pointer;
+        transition: opacity 0.22s;
+      }
+      .node circle {
+        stroke-width: 1.5;
+      }
+      .node text {
+        fill: #dce4f2;
+        font-size: 13px;
+        paint-order: stroke;
+        stroke: #141b27;
+        stroke-width: 4px;
+        stroke-linejoin: round;
+      }
+      .node:focus {
+        outline: none;
+      }
+      .node:focus circle {
+        stroke: white;
+        stroke-width: 3;
+      }
+      .edge {
+        fill: none;
+        stroke: #7f91b2;
+        stroke-width: 1.4;
+        transition: opacity 0.22s;
+      }
+      .edge.active {
+        stroke: #b8a1ff;
+        stroke-width: 2;
+      }
+      .edge.control {
+        stroke: #8994a8;
+        stroke-dasharray: 3 4;
+      }
+      .edge.fail {
+        stroke: #ec8796;
+      }
+      .edge.pass {
+        stroke: #80c7a3;
+      }
+      .branch-label {
+        font: 11px system-ui;
+        fill: #80c7a3;
+        paint-order: stroke;
+        stroke: #10141c;
+        stroke-width: 4px;
+        pointer-events: none;
+      }
+      .branch-label.fail {
+        fill: #ec8796;
+      }
+      .edge.inferred {
+        stroke-dasharray: 6 5;
+      }
+      .hint {
+        position: absolute;
+        bottom: 18px;
+        left: 22px;
+        color: #7e8ca4;
+        font-size: 12px;
+        pointer-events: none;
+      }
+      .zoom {
+        position: absolute;
+        right: 16px;
+        bottom: 16px;
+        display: flex;
+        gap: 5px;
+      }
+      aside {
+        border-left: 1px solid #293140;
+        padding: 20px;
+        overflow: auto;
+        background: #151b25;
+      }
+      aside h2 {
+        font-size: 18px;
+        margin: 0 0 8px;
+      }
+      aside h3 {
+        font-size: 12px;
+        color: #92a4c1;
+        margin: 20px 0 6px;
+      }
+      aside p {
+        font-size: 13px;
+        color: #b4c0d3;
+        overflow-wrap: anywhere;
+      }
+      aside ul {
+        padding-left: 18px;
+        font-size: 12px;
+        color: #b4c0d3;
+      }
+      aside li {
+        margin-bottom: 7px;
+        overflow-wrap: anywhere;
+      }
+      .badge {
+        display: inline-block;
+        background: #2d2644;
+        color: #cbb9ff;
+        border-radius: 5px;
+        font-size: 11px;
+        padding: 2px 7px;
+        margin-bottom: 12px;
+      }
+      .relation {
+        border-top: 1px solid #303a4c;
+        padding-top: 10px;
+      }
+      aside button {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      .source {
+        font-family: ui-monospace, monospace;
+        color: #9baecb;
+        font-size: 11px;
+      }
+      #status {
+        position: absolute;
+        top: 15px;
+        left: 22px;
+        font-size: 12px;
+        color: #9dacbe;
+      }
+      .legend {
+        display: flex;
+        gap: 12px;
+        margin-left: auto;
+        font-size: 11px;
+        color: #9facbf;
+      }
+      .legend span::before {
+        content: '●';
+        margin-right: 5px;
+        color: var(--dot);
+      }
+      #results {
+        display: flex;
+        gap: 5px;
+        flex-wrap: wrap;
+        width: 100%;
+      }
+      #results:empty {
+        display: none;
+      }
+      #results button {
+        font-size: 12px;
+      }
+      footer {
+        padding: 7px 28px;
+        color: #7e8ca4;
+        font-size: 11px;
+        border-top: 1px solid #293140;
+      }
+      @media (max-width: 800px) {
+        main {
+          grid-template-columns: 1fr;
+          height: auto;
+        }
+        .canvas {
+          height: 60dvh;
+          min-height: 380px;
+        }
+        aside {
+          border-left: 0;
+          border-top: 1px solid #293140;
+          max-height: 50dvh;
+        }
+        nav,
+        header {
+          padding-left: 16px;
+          padding-right: 16px;
+        }
+        .legend {
+          display: none;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <small>BUSINESS FLOW / SOURCE EXPLORER</small>
+      <h1 id="title"></h1>
+      <p id="scope"></p>
+    </header>
+    <nav aria-label="图谱控制">
+      <input
+        id="search"
+        type="search"
+        placeholder="搜索业务节点…"
+        aria-label="搜索业务节点"
+      /><label
+        >方向
+        <select id="direction">
+          <option value="both">上下游</option>
+          <option value="upstream">仅上游</option>
+          <option value="downstream">仅下游</option>
+        </select></label
+      ><label
+        >深度
+        <select id="depth">
+          <option value="1">1 层</option>
+          <option value="2">2 层</option>
+        </select></label
+      ><label><input id="logic" type="checkbox" /> 包含业务逻辑校验</label
+      ><label><input id="inferred" type="checkbox" /> 显示推测关系</label
+      ><button id="collapse">收起展开</button><button id="reset">返回总览</button>
+      <div class="legend">
+        <span style="--dot: #efaa72">校验规则</span><span style="--dot: #b39af5">业务处理</span
+        ><span style="--dot: #6bbac5">数据 / 存储</span
+        ><span style="--dot: #d9b77a">参与者 / 结果</span>
+      </div>
+      <div id="results" aria-live="polite"></div>
+    </nav>
+    <main>
+      <section class="canvas" aria-label="业务流程画布">
+        <svg id="graph" aria-label="可交互业务图">
+          <defs>
+            <marker
+              id="arrow"
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#a795d0" />
+            </marker>
+          </defs>
+          <g id="viewport">
+            <g id="edges"></g>
+            <g id="nodes"></g>
+          </g>
+        </svg>
+        <div id="status" aria-live="polite"></div>
+        <div class="hint">点击节点探索 · 再次点击收起 · 拖拽布局 · 滚轮缩放</div>
+        <div class="zoom">
+          <button id="fit" aria-label="适应全图">适应全图</button
+          ><button id="zoom-in" aria-label="放大">＋</button
+          ><button id="zoom-out" aria-label="缩小">－</button>
+        </div>
+      </section>
+      <aside id="details" aria-live="polite"></aside>
+    </main>
+    <footer>
+      依据源码归纳业务关系，不代表运行时追踪。实线为数据流，点线为执行顺序 /
+      条件；绿色通过，红色拒绝；长虚线为推测。
+    </footer>
+    <script id="graph-data" type="application/json">
+      __GRAPH_JSON__
+    </script>
+    <script>
+      /*__VIEWER__*/
+    </script>
+  </body>
+</html>

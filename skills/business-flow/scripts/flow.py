@@ -94,6 +94,8 @@ def validate(graph, repo):
                 node_ids.add(row['id'])
                 require(row.get('kind') in ('actor', 'process', 'data', 'store', 'outcome', 'rule'), 'Invalid node kind')
                 require(type(row.get('core')) is bool, 'core must be boolean')
+                if 'entry' in row:
+                    require(type(row['entry']) is bool, 'entry must be boolean')
                 require(row.get('layer', 'business') in ('business', 'detail'), 'Invalid node layer')
                 if row.get('layer') == 'detail':
                     require(not row['core'], 'Detail nodes cannot be core')

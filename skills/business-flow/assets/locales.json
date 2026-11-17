@@ -77,7 +77,17 @@
     "kind_store": "存储",
     "kind_outcome": "结果",
     "kind_rule": "规则",
-    "languageDecision": "语言选择依据"
+    "languageDecision": "语言选择依据",
+    "playback": "流程演示",
+    "play": "播放演示",
+    "pause": "暂停演示",
+    "newEntry": "随机入口",
+    "demoReady": "演示已暂停",
+    "pausedAt": "已暂停：{label}",
+    "playingAt": "正在演示：{label}",
+    "demoComplete": "路径结束：{label}",
+    "noEntry": "未识别到入口，请选择节点探索",
+    "demoWarning": "基于分析的路径演示，非真实执行；不计算校验条件。"
   },
   "en": {
     "appTitle": "Business data flow",
@@ -157,6 +167,16 @@
     "kind_store": "Store",
     "kind_outcome": "Outcome",
     "kind_rule": "Rule",
-    "languageDecision": "Language selection rationale"
+    "languageDecision": "Language selection rationale",
+    "playback": "Flow demonstration",
+    "play": "Play demo",
+    "pause": "Pause demo",
+    "newEntry": "Random entry",
+    "demoReady": "Demo paused",
+    "pausedAt": "Paused: {label}",
+    "playingAt": "Demonstrating: {label}",
+    "demoComplete": "Path complete: {label}",
+    "noEntry": "No identifiable entry; select a node to explore",
+    "demoWarning": "Illustrative path, not runtime execution. Rule conditions are not evaluated."
   }
 }

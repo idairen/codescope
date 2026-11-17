@@ -78,7 +78,7 @@
       main {
         display: grid;
         grid-template-columns: minmax(0, 1fr) 330px;
-        height: calc(100dvh - 190px);
+        height: calc(100dvh - 260px);
         min-height: 460px;
       }
       .canvas {
@@ -146,6 +146,39 @@
       }
       .branch-label.fail {
         fill: #ec8796;
+      }
+      .node[data-current='true'] circle {
+        stroke-width: 4;
+        filter: drop-shadow(0 0 7px #e2d4ff);
+      }
+      .edge[data-playing='true'] {
+        stroke-width: 4;
+        stroke-dasharray: 8 5;
+      }
+      #particle {
+        fill: #fff;
+        stroke: #b6a1ff;
+        stroke-width: 3;
+        pointer-events: none;
+      }
+      .playback {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 28px;
+        border-bottom: 1px solid #293140;
+      }
+      .playback p {
+        margin: 0;
+        font-size: 12px;
+        color: #b2bed0;
+      }
+      #playback-status {
+        min-width: 180px;
+      }
+      #play {
+        min-width: 110px;
       }
       .edge.impacted {
         stroke: #ff526f;
@@ -329,6 +362,12 @@
       </div>
       <div id="results" aria-live="polite"></div>
     </nav>
+    <section class="playback" aria-label="{{ui:playback}}">
+      <button id="play" aria-pressed="false">{{ui:play}}</button>
+      <button id="new-entry">{{ui:newEntry}}</button>
+      <p id="playback-status" aria-live="polite"></p>
+      <p>{{ui:demoWarning}}</p>
+    </section>
     <main>
       <section class="canvas" aria-label="{{ui:canvas}}">
         <svg id="graph" aria-label="{{ui:graph}}">
@@ -357,8 +396,22 @@
             </marker>
           </defs>
           <g id="viewport">
+            <g
+              id="globe"
+              fill="none"
+              stroke="#596b8d"
+              stroke-width="0.004"
+              opacity="0.35"
+              aria-hidden="true"
+              pointer-events="none"
+            >
+              <circle r="1" />
+              <ellipse rx="1" ry="0.34" transform="rotate(-18)" />
+              <ellipse rx="0.42" ry="1" transform="rotate(-18)" />
+            </g>
             <g id="edges"></g>
             <g id="nodes"></g>
+            <circle id="particle" r="6" visibility="hidden"></circle>
           </g>
         </svg>
         <div id="status" aria-live="polite"></div>

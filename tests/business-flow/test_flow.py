@@ -32,6 +32,13 @@ class FlowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'hashes changed'):
             flow.validate(self.graph, self.repo)
 
+    def test_entry_marker_must_be_boolean(self):
+        self.graph['nodes'][0]['entry'] = True
+        flow.validate(self.graph, self.repo)
+        self.graph['nodes'][0]['entry'] = 'yes'
+        with self.assertRaisesRegex(ValueError, 'entry must be boolean'):
+            flow.validate(self.graph, self.repo)
+
     def test_missing_and_out_of_range_evidence(self):
         for path, end in [('absent.py', 1), ('source.py', 999)]:
             self.ref.update(path=path, endLine=end)

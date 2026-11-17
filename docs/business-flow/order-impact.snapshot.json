@@ -26,7 +26,8 @@
       ],
       "inputs": ["SKU、数量、单价"],
       "outputs": ["订单 ID、金额"],
-      "states": ["created"]
+      "states": ["created"],
+      "entry": true
     },
     {
       "id": "orders",
@@ -60,7 +61,8 @@
       ],
       "inputs": ["订单 ID、支付金额"],
       "outputs": ["已付款订单"],
-      "states": ["金额不匹配时抛错"]
+      "states": ["金额不匹配时抛错"],
+      "entry": true
     },
     {
       "id": "stock",
@@ -1384,6 +1386,16 @@
     "kind_store": "存储",
     "kind_outcome": "结果",
     "kind_rule": "规则",
-    "languageDecision": "语言选择依据"
+    "languageDecision": "语言选择依据",
+    "playback": "流程演示",
+    "play": "播放演示",
+    "pause": "暂停演示",
+    "newEntry": "随机入口",
+    "demoReady": "演示已暂停",
+    "pausedAt": "已暂停：{label}",
+    "playingAt": "正在演示：{label}",
+    "demoComplete": "路径结束：{label}",
+    "noEntry": "未识别到入口，请选择节点探索",
+    "demoWarning": "基于分析的路径演示，非真实执行；不计算校验条件。"
   }
 }

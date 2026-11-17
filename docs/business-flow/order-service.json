@@ -26,7 +26,8 @@
       ],
       "inputs": ["SKU、数量、单价"],
       "outputs": ["订单 ID、金额"],
-      "states": ["created"]
+      "states": ["created"],
+      "entry": true
     },
     {
       "id": "orders",
@@ -60,7 +61,8 @@
       ],
       "inputs": ["订单 ID、支付金额"],
       "outputs": ["已付款订单"],
-      "states": ["金额不匹配时抛错"]
+      "states": ["金额不匹配时抛错"],
+      "entry": true
     },
     {
       "id": "stock",

@@ -28,6 +28,17 @@
     focus = null,
     neighborhood = new Set(),
     activeEdges = new Set();
+  let spherical = true,
+    playing = false,
+    frame = null,
+    lastTime = null,
+    elapsed = 0,
+    angle = 0;
+  let current = null,
+    routeEdge = null;
+  const visited = new Set();
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
+  let reducedMotion = motion.matches;
   let camera = { x: 0, y: 0, scale: 1 };
   const freshNodes = new Set();
   const positions = new Map(),
@@ -218,6 +229,8 @@
     }
   }
   function select(id) {
+    inspect();
+    $('direction').value = 'both';
     if (focus === id) {
       collapse();
       return;
@@ -226,11 +239,13 @@
     refresh();
   }
   function collapse() {
+    inspect();
     focus = null;
     visible = new Set(core);
     refresh();
   }
   function refresh() {
+    if (spherical) visible = new Set(graph.nodes.filter(eligible).map((n) => n.id));
     visible = new Set([...visible].filter((id) => eligible(byId.get(id))));
     const result = focus ? walk(focus) : { reached: new Set(), used: new Set() };
     neighborhood = result.reached;
@@ -302,6 +317,7 @@
             select(id);
           }
         });
+        el.addEventListener('focus', pause);
         el.addEventListener('pointerdown', (e) => beginDrag(e, id));
         $('nodes').append(el);
         nodeEls.set(id, el);
@@ -372,8 +388,139 @@
     if (impactEnabled())
       $('status').textContent += ' · ' + t('impactCount', { count: impact.nodes.length });
     details();
-    settleLayout();
+    if (spherical) sphereLayout();
+    else settleLayout();
     if (focus) fitView(neighborhood, false);
+  }
+  // Project a Fibonacci sphere to SVG. Inspection uses the existing label-aware layout.
+  function sphereLayout() {
+    $('globe').setAttribute('visibility', 'visible');
+    const ids = [...visible],
+      radius = Math.max(80, Math.min(svg.clientWidth, svg.clientHeight) / 2 - 90);
+    $('globe').setAttribute(
+      'transform',
+      `translate(${svg.clientWidth / 2},${svg.clientHeight / 2}) scale(${radius})`,
+    );
+    ids.forEach((id, i) => {
+      const y = 1 - (2 * (i + 0.5)) / ids.length;
+      const ring = Math.sqrt(1 - y * y),
+        longitude = i * 2.399963 + angle;
+      const z = ring * Math.sin(longitude),
+        perspective = 2.8 / (2.8 - z);
+      const p = positions.get(id);
+      p.x = svg.clientWidth / 2 + radius * ring * Math.cos(longitude) * perspective;
+      p.y = svg.clientHeight / 2 + radius * y * perspective;
+      p.z = z;
+      nodeEls.get(id).style.opacity =
+        impactEnabled() && impactFor(id) ? '1' : String(0.55 + (z + 1) * 0.225);
+      nodeEls
+        .get(id)
+        .querySelector('circle')
+        .setAttribute('r', 16 + (z + 1) * 4);
+    });
+    // Paint the nearest nodes last, retaining full labels and keyboard targets.
+    for (const id of ids.sort((a, b) => positions.get(a).z - positions.get(b).z))
+      $('nodes').append(nodeEls.get(id));
+    draw();
+  }
+  function entries() {
+    const edges = available().filter((e) => e.status === 'supported');
+    const candidates = graph.nodes.filter(
+      (n) => eligible(n) && edges.some((e) => e.source === n.id),
+    );
+    const declared = candidates.filter((n) => n.entry === true);
+    return declared.length
+      ? declared
+      : candidates.filter((n) => !edges.some((e) => e.target === n.id));
+  }
+  function playbackState(key) {
+    $('playback-status').textContent = t(key, { label: current ? byId.get(current).label : '' });
+    $('play').textContent = t(playing ? 'pause' : 'play');
+    $('play').setAttribute('aria-pressed', String(playing));
+  }
+  function pause() {
+    playing = false;
+    if (frame !== null) cancelAnimationFrame(frame);
+    frame = null;
+    lastTime = null;
+    playbackState(current ? 'pausedAt' : 'demoReady');
+  }
+  function inspect() {
+    pause();
+    if (spherical) {
+      spherical = false;
+      visible = new Set(core);
+      for (const el of nodeEls.values()) el.querySelector('circle').setAttribute('r', 20);
+    }
+    routeEdge = null;
+    $('globe').setAttribute('visibility', 'hidden');
+    $('particle').setAttribute('visibility', 'hidden');
+    for (const el of edgeEls.values()) el.setAttribute('data-playing', 'false');
+    for (const el of nodeEls.values()) el.setAttribute('data-current', 'false');
+  }
+  function chooseEntry() {
+    const options = entries();
+    current = options.length ? options[Math.floor(Math.random() * options.length)].id : null;
+    routeEdge = null;
+    visited.clear();
+    elapsed = 0;
+  }
+  function markPlayback(progress = 0) {
+    for (const [id, el] of nodeEls) el.setAttribute('data-current', String(id === current));
+    for (const [id, el] of edgeEls) el.setAttribute('data-playing', String(id === routeEdge?.id));
+    const path = routeEdge && edgeEls.get(routeEdge.id);
+    $('particle').setAttribute('visibility', path ? 'visible' : 'hidden');
+    if (path) {
+      const point = path.getPointAtLength(path.getTotalLength() * progress);
+      $('particle').setAttribute('cx', point.x);
+      $('particle').setAttribute('cy', point.y);
+    }
+  }
+  function tick(time) {
+    frame = null;
+    if (!playing) return;
+    const delta = lastTime === null ? 0 : Math.min(100, time - lastTime);
+    lastTime = time;
+    elapsed += delta;
+    if (!reducedMotion) angle += delta * 0.00009;
+    sphereLayout();
+    if (elapsed >= 1600) {
+      elapsed = 0;
+      if (routeEdge) current = routeEdge.target;
+      // One illustrative branch at a time; never revisit an edge or evaluate a rule.
+      const next = available().filter(
+        (e) => e.status === 'supported' && e.source === current && !visited.has(e.id),
+      );
+      routeEdge = next.length ? next[Math.floor(Math.random() * next.length)] : null;
+      if (!routeEdge) {
+        markPlayback();
+        pause();
+        playbackState('demoComplete');
+        return;
+      }
+      visited.add(routeEdge.id);
+      playbackState('playingAt');
+    }
+    markPlayback(reducedMotion ? 0 : elapsed / 1600);
+    frame = requestAnimationFrame(tick);
+  }
+  function start(newEntry = false) {
+    pause();
+    if (!spherical) newEntry = true;
+    spherical = true;
+    focus = null;
+    camera = { x: 0, y: 0, scale: 1 };
+    transform();
+    if (newEntry || !current || (!routeEdge && visited.size)) chooseEntry();
+    refresh();
+    markPlayback();
+    if (!current) {
+      playbackState('noEntry');
+      return;
+    }
+    playing = true;
+    playbackState('playingAt');
+    frame = requestAnimationFrame(tick);
   }
   function draw() {
     for (const [id, el] of nodeEls) {
@@ -548,6 +695,7 @@
     suppressClick = false;
   function beginDrag(e, id) {
     if (e.button !== 0) return;
+    pause();
     e.stopPropagation();
     suppressClick = false;
     drag = { id, x: e.clientX, y: e.clientY, lastX: e.clientX, lastY: e.clientY, moved: false };
@@ -609,11 +757,13 @@
   $('impact-toggle').disabled = !impact;
   $('impact-toggle').checked = Boolean(impact);
   $('impact-toggle').onchange = () => {
+    inspect();
     visible = new Set(core);
     refresh();
   };
   $('impact-focus').disabled = !impact || !impact.nodes.length;
   $('impact-focus').onclick = () => {
+    inspect();
     $('impact-toggle').checked = true;
     $('logic').checked = true;
     $('direction').value = 'both';
@@ -626,11 +776,13 @@
   $('zoom-out').onclick = () => zoom(1 / 1.2);
   for (const id of ['depth', 'direction', 'inferred'])
     $(id).onchange = () => {
+      inspect();
       visible = new Set(core);
       refresh();
     };
   $('collapse').onclick = collapse;
   $('logic').onchange = () => {
+    inspect();
     if (detailed() && !focus)
       focus = graph.nodes.find((n) => n.core && n.kind === 'process')?.id || null;
     if (focus && !eligible(byId.get(focus))) focus = byId.get(focus).parentId;
@@ -652,6 +804,8 @@
     $('search').value = '';
     $('results').replaceChildren();
     collapse();
+    start(true);
+    if (reducedMotion && playing) pause();
   };
   $('search').oninput = () => {
     const q = $('search').value.trim().toLowerCase();
@@ -676,8 +830,19 @@
   $('title').textContent = graph.title;
   $('scope').textContent = graph.scope;
   new ResizeObserver(() => {
-    settleLayout();
+    if (spherical) sphereLayout();
+    else settleLayout();
     if (focus) fitView(neighborhood, false);
   }).observe(svg);
-  refresh();
+  $('play').onclick = () => (playing ? pause() : start());
+  $('new-entry').onclick = () => start(true);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) pause();
+  });
+  motion.addEventListener('change', (event) => {
+    reducedMotion = event.matches;
+    if (reducedMotion && playing) pause();
+  });
+  start(true);
+  if (reducedMotion && playing) pause();
 })();

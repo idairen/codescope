@@ -1,98 +1,106 @@
 # CodeScope
 
-独立实现的本地业务知识图谱工作台。扫描仓库代码和文档，用 LLM 聚合业务域、处理环节和共享数据对象，展示业务数据如何在它们之间流转。函数与文件保留在证据视图。
+English | [简体中文](README.zh-CN.md)
 
-第一版支持 **TypeScript / JavaScript**。默认「业务图谱」展示模型根据代码与文档推导的业务数据关系，**不是运行时追踪，也不是经过静态证明的字段级数据流分析**。生成业务知识图谱需要模型配置；没有模型时，仍可在「代码证据」中使用基础扫描、搜索、路径追踪和源码查看。
+A local workspace for exploring business knowledge graphs. CodeScope scans repository code and documentation, then uses an LLM to identify business domains, processes, and shared data objects and explain how data moves between them. Functions and files remain available as source evidence.
 
-## 启动
+The application currently supports **TypeScript / JavaScript**. Its business graph is a model interpretation of source and documentation, **not runtime tracing or formally proven field-level data-flow analysis**. Business graph generation requires a configured model; scanning, searching, static path exploration, and source inspection work without one.
 
-需要 Node.js **22.18+（22.x）或 24.x**。当前依赖安装与构建已在 macOS ARM64 验证；其他平台尚未验证。
+## Getting started
+
+Use Node.js **22.18+ (22.x) or 24.x**. Dependency installation and builds have been verified on macOS ARM64; other platforms have not been verified.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-浏览器打开 `http://127.0.0.1:4173`。服务只绑定本机地址。点击「扫描订单示例」可分析随附的真实示例文件；也可以「连接本地仓库」，输入仓库绝对路径。
+Open `http://127.0.0.1:4173`. The server binds to localhost only. Choose “扫描订单示例” to scan the included order example, or “连接本地仓库” and enter an absolute repository path. The application interface currently uses Chinese.
 
 ```bash
-npm run build         # TypeScript 检查 + 前端生产构建
-npm start             # 提供构建后的 UI 和本地 API
-npm test              # 扫描器、模型协议和 API 测试
-npm run typecheck     # 类型检查
-npm run format:check  # 格式检查
-npm run format       # 格式化实现、测试与文档
+npm run build         # TypeScript checks and production frontend build
+npm start             # Serve the built UI and local API
+npm test              # Scanner, model protocol, and API tests
+npm run typecheck     # Type checks
+npm run format:check  # Formatting checks
+npm run format       # Format implementation, tests, and documentation
 ```
 
-`PORT` 可修改端口，`CODESCOPE_DATA_DIR` 可改变本地存储目录。Node.js 22 的内置 SQLite 会输出实验性功能提示。
+Set `PORT` to change the port or `CODESCOPE_DATA_DIR` to change the local storage directory. Node.js 22 emits an experimental-feature notice for its built-in SQLite module.
 
-## 使用流程
+## Workflow
 
-1. 连接仓库并完整扫描。扫描不会执行目标代码、安装其依赖或修改目标文件。
-2. 默认打开「业务图谱」。配置模型后点击「生成业务知识图谱」，按整个仓库的代码与文档解读业务。扫描本身不调用模型。
-3. 先查看业务域总览，再展开业务域查看处理环节、共享数据、存储和结果。点击节点追踪流入/流出，点击连线查看数据与条件；代码与文档引用按需展开。支持搜索高亮、节点拖动、画布平移和缩放，默认保持可读字号，不自动缩小整张图。
-4. 「代码证据」保留函数搜索、模块筛选和静态调用路径；「模块依赖」查看文件引用，「文档依据」查看原始文档。
-5. 修改仓库后手动点击「重新扫描」。文件哈希识别新增、修改、删除；同一服务进程内复用未变化 AST，重新解析全图关系以清除失效连线。服务重启后首次有变化的扫描会重新构建 AST 缓存。
-6. 业务视图导出当前语言和模型下已生成的业务知识图谱 JSON；代码视图导出代码图谱。导出不包含源码文本、仓库绝对根路径或模型密钥。
+1. Connect and scan a repository. Scanning does not execute target code, install its dependencies, or modify target files.
+2. Configure a model and choose “生成业务知识图谱” in the default business graph view. Scanning alone never calls the model.
+3. Explore domains, then expand their processes, shared data, stores, and outcomes. Select nodes to trace incoming and outgoing relations, or edges to inspect data and conditions. Source references expand on demand. Search, dragging, panning, and zooming are available; the application preserves readable text rather than automatically shrinking the entire graph.
+4. Use “代码证据” for function search, module filters, and static call paths; “模块依赖” for file imports; and “文档依据” for original documentation.
+5. Rescan manually after changes. File hashes detect additions, modifications, and deletions. Unchanged ASTs are reused within a server process; graph relations are rebuilt to remove stale edges. After a restart, the first scan with changes rebuilds the AST cache.
+6. Export the generated business graph for the current language and model, or export the code graph from the code view. Exports exclude source text, absolute repository roots, and model keys.
 
-「代码证据」视图中，不存在的有向路径会明确提示；未解析的调用不会用名称相似性补连线。单个画布最多展示 140 个普通节点，追踪路径节点优先保留。大仓库通过模块筛选和搜索查看。
+The code evidence view explicitly reports missing directed paths and does not connect unresolved calls based on name similarity. A canvas shows at most 140 ordinary nodes, prioritizing path nodes; use module filters and search for larger repositories.
 
-## 文档语言
+## Report language
 
-有足够内容的主 `README.md` 优先决定解释语言；否则结合架构文档与其他文档判断。代码块不参与判断。当前自动识别中文、英文、日文、韩文和俄文；证据不足、其他语言或混杂文档会显示「待选择」。
+In the application, a substantive primary `README.md` takes precedence when choosing the explanation language; otherwise architecture and other documentation are considered. Code blocks are excluded. Chinese, English, Japanese, Korean, and Russian are detected automatically. Insufficient, unsupported, or mixed evidence prompts manual selection.
 
-Web UI 可手动覆盖语言，按仓库保存在浏览器中。原始函数名、路径、源码不翻译。模型生成的业务名称、说明和限制按所选语言展示；没有 AI 解读的节点保留原始符号。当前界面自身使用中文。
+The UI allows a language override saved per repository in the browser. Generated business names, explanations, and limitations use the selected language. Original symbols, paths, and source code are not translated; nodes without AI interpretation retain their original symbols. The application interface itself currently uses Chinese.
 
-## 可选 LLM
+The **standalone skill** separately chooses its report and HTML control language from the target project's **documentation and code comments**, retaining evidence for that choice.
 
-「模型设置」支持 Chat Completions 兼容 API，包括本地 Ollama 的 `/v1` 接口。填写服务地址和该服务实际提供的模型名称；云端服务通常还需要 API Key。浏览器提交的配置只保留在后端进程内，不写入数据库；更换 API 地址时不复用旧密钥。
+## Optional LLM configuration
 
-持久配置可使用环境变量，或复制 `.env.example` 为 `.env` 后填写。启动脚本自动读取 `.env`：
+Model settings support Chat Completions-compatible APIs, including local Ollama's `/v1` endpoint. Enter the endpoint and an available model name; cloud services typically require an API key. Browser-submitted configuration stays in the backend process and is not written to the database. Changing the endpoint clears the previous key.
+
+For persistent configuration, use environment variables or copy `.env.example` to `.env`. Startup scripts load `.env` automatically:
 
 ```bash
 export CODESCOPE_LLM_BASE_URL=http://127.0.0.1:11434/v1
 export CODESCOPE_LLM_MODEL=your-installed-model
-# 云端服务按需设置 CODESCOPE_LLM_API_KEY
+# Set CODESCOPE_LLM_API_KEY if required by your provider.
 npm run dev
 ```
 
-点击「生成业务知识图谱」，或在代码视图点击「生成 AI 解读」，才会向配置的模型发送相关源码片段、图关系与选取的业务/架构文档。浏览操作不会调用模型。业务图谱按文件轮流选取代码证据并限制长度，代码解读按邻域截断；模型输出验证 JSON 结构、节点 ID 与证据引用，再显示为 AI 解读。**引用校验不是语义真实性保证**。失败可重试，不破坏图谱。
+Only “生成业务知识图谱” and “生成 AI 解读” send selected source snippets, graph relations, and business/architecture documentation to the configured model. Browsing does not call it. Evidence is length-limited; business generation samples across files, while code interpretation uses a bounded neighborhood. Outputs are checked for JSON structure, node IDs, and references. **Reference validation does not guarantee semantic correctness.** Failed generation preserves the previous graph and can be retried.
 
-业务图谱最多 8 个业务域、32 个实体、64 条关系；共享数据对象由模型合并。代码证据最多 100 个片段、总计 100,000 字符，文档最多 10 篇、每篇 6,000 字符；截断范围会显示在图谱上。校验实体归属、关系端点、引用、孤立节点，以及读写方向。读取是数据对象 → 处理环节，写入是处理环节 → 数据对象。域总览只聚合已有跨域数据关系，不为连接整张图而补线。模型仍可能遗漏或误判业务，需要核对引用。读写类型与端点不匹配的关系列入「待确认关系」，保留原始说明和引用但不绘入主图；界面明确提示部分结果。所有关系都待确认时，生成失败并保留旧图。
+Business graphs are limited to 8 domains, 32 entities, and 64 relations. The model consolidates shared data objects. Evidence includes at most 100 code snippets totaling 100,000 characters, plus 10 documents of up to 6,000 characters each. Truncation is disclosed. Validation checks entity ownership, endpoints, references, isolated nodes, and read/write direction: reads flow from data to process; writes flow from process to data. Domain summaries aggregate existing cross-domain relations without inventing connections. Relations whose read/write type conflicts with their endpoints remain visible as pending explanations and references, but are not drawn. If every relation is pending, generation fails and preserves the previous graph. Review references for omissions and misinterpretations.
 
-本地默认 Ollama 地址（回环地址、11434 端口）采用较小的证据预算：最多 24 个代码片段、3 篇文档，序列化证据不超过 18,000 字符（不含系统提示词与输出 schema；字符数不等于 token 数）。界面显示覆盖限制。图谱请求使用结构化 JSON 输出并请求关闭思考，应用等待上限为 10 分钟；底层网络超时仍会单独报错。其他兼容服务保持原请求方式和 2 分钟上限。结构化输出支持参考 [Ollama 官方文档](https://docs.ollama.com/capabilities/structured-outputs)。
+The default local Ollama endpoint (loopback, port 11434) uses a smaller budget: up to 24 code snippets, 3 documents, and 18,000 serialized evidence characters, excluding the system prompt and output schema. Characters are not tokens. Coverage limits appear in the UI. Requests use structured JSON output and request disabled thinking, with a 10-minute application timeout; lower-level network timeouts are reported separately. Other compatible services retain the standard request format and 2-minute timeout. See [Ollama structured output documentation](https://docs.ollama.com/capabilities/structured-outputs).
 
-如果原来每次约两分钟报「连接失败或超时」，请重启 CodeScope 后重试。开发命令不监听后端代码变化；在启动它的终端按 Ctrl+C，再运行 `npm run dev`。页面填写的模型配置仅存于进程内，重启后需要重新填写（环境变量配置除外）。
+Restart CodeScope after backend or environment changes: stop the terminal process with Ctrl+C and run `npm run dev` again. The development command does not watch backend code. Browser-submitted model settings must be entered again after restart unless configured through the environment.
 
-解读按仓库内容指纹、节点、语言和模型配置缓存；重扫发生变化后不复用旧解读。本版没有接入本地 AI CLI、MCP 或自动问答 Agent，也不会自动下载或启动模型。
+Interpretations are cached by repository fingerprint, node, language, and model configuration. Changed scans invalidate old interpretations. The application does not integrate a local AI CLI, MCP, or autonomous question-answering agent, and never downloads or starts models automatically.
 
-## 范围与限制
+## Scope and limitations
 
-- 使用 TypeScript Compiler API 做语法与符号解析；支持常见函数、方法、箭头函数及相对导入。尚未读取 tsconfig 路径别名、第三方类型声明。
-- `app/router/server.get/post/...` 的字面量路由注册标为启发式候选；不宣称支持所有框架。
-- 动态分派、回调传递、框架注入和字段传播可能缺失；缺失情况显示在分析范围中。
-- Python、Java、Go 等尚未接入分析器；扫描会报告未支持文件数量。
-- 跳过符号链接、隐藏文件、依赖、构建目录，遵循目录级 `.gitignore`。单文件 500 KB，单次最多 4,000 个代码/文档文件、30 MB 文本。
-- 图谱和源码快照存于 `.codescope/codescope.sqlite`，含仓库源码，已加入 Git 忽略。当前每个仓库保留最新成功快照，不提供历史版本浏览。
-- 本地单用户服务，没有远程部署或多人认证。不要直接将端口暴露到公网。
+- The TypeScript Compiler API handles common functions, methods, arrow functions, and relative imports. tsconfig aliases and third-party type declarations are not resolved yet.
+- Literal `app/router/server.get/post/...` registrations are heuristic route candidates, not universal framework support.
+- Dynamic dispatch, callbacks, dependency injection, and field propagation may be missed; limitations appear in the analysis scope.
+- Python, Java, and Go analyzers are not implemented. Scans report unsupported file counts.
+- Scans skip symlinks, hidden files, dependencies, and build directories, and respect directory-level `.gitignore` rules. Limits: 500 KB per file, 4,000 code/document files, and 30 MB of text per scan.
+- `.codescope/codescope.sqlite` contains graph and source snapshots and is Git-ignored. Each repository retains its latest successful snapshot; history browsing is unavailable.
+- This is a local single-user service without remote-deployment authentication. Do not expose the port directly to the public internet.
 
-## 开发与验证
+## Development and verification
 
-`server/` 是扫描、存储、API 和模型适配；`shared/` 是图谱契约与路径算法；`src/` 是 React UI 与独立 SVG 画布；`examples/` 是可扫描示例；`tests/` 是行为测试。
+`server/` contains scanning, storage, APIs, and model adapters; `shared/` contains graph contracts and path algorithms; `src/` contains the React UI and independent SVG canvases; `examples/` contains scan targets; `tests/` contains behavior tests.
 
-本版采用 SVG 画布，未引入 React Flow；图数据与呈现分离，后续可替换。没有复制或依赖 GitNexus 源码、提示词或资产。
+The canvases use SVG without React Flow. Graph data and rendering are separate. No GitNexus source, prompts, or assets were copied or included as dependencies.
 
-当前验证记录见 [docs/validation.md](docs/validation.md)，架构与后续范围见 [docs/architecture.md](docs/architecture.md)。
+See [verification records](docs/validation.md) and [architecture and planned scope](docs/architecture.md).
 
-## 独立 Business Flow skill
+## Standalone Business Flow skill
 
-新增模型无关的 [business-flow skill](skills/business-flow/SKILL.md)，由调用它的大模型分析目标仓库，生成可离线打开的业务图。支持点击节点高亮并展开上下游、方向与深度筛选、搜索、拖拽缩放和代码证据侧栏。可勾选“包含业务逻辑校验”，查看具体校验条件、计算、通过/拒绝分支及状态变化。还支持输入变更需求或检查代码 diff，生成带直接／间接影响红色标记的独立报告；查看 [影响分析示例](docs/business-flow/order-impact.html)。独立 skill 根据目标项目文档与代码注释决定报告语言，统一业务说明与 HTML 控件语言，并保留判断依据。无需启动 CodeScope 或配置模型 API。
+The model-independent [business-flow skill](skills/business-flow/SKILL.md) lets a host model analyze a repository and generate an offline HTML report without starting CodeScope or configuring its model API.
 
-查看 [订单交互示例](docs/business-flow/order-service.html)、[调用与验证说明](docs/business-flow/usage.md)，或复制 `skills/business-flow/` 整个目录到其他代理宿主。运行仅需 Python 3.10+；纯文本模型仍需要宿主提供文件与命令工具。
+Its viewer opens as a rotating spherical graph and demonstrates one directed path from a random entry. Pause, resume, or choose another entry. Selecting a node pauses playback and reveals both upstream and downstream relations in a stable layout with label-aware collision avoidance. Direction, depth, search, dragging, zooming, and source evidence remain available. Playback illustrates source-derived relations: it does not execute code or evaluate rule conditions. Reduced-motion preferences disable automatic playback.
+
+Enable “Include business rules” to inspect validation conditions, calculations, pass/fail branches, and state changes. Supply a change request or code diff to generate direct/indirect impact highlights in red; see the [impact example](docs/business-flow/order-impact.html). Report text and HTML controls follow the target project's documentation and comment language, with recorded rationale.
+
+See the [interactive order example](docs/business-flow/order-service.html) and [usage guide](docs/business-flow/usage.md), or copy the entire `skills/business-flow/` directory to another agent host. The helper requires Python 3.10+ only; the host model needs filesystem and command tools.
 
 ```sh
-npm run test:skill          # Python 校验/渲染测试 + 模拟 DOM 交互测试
-npm run format:skill:check  # skill 资源格式检查
+npm run test:skill          # Python validation/rendering and simulated DOM tests
+npm run format:skill:check  # Skill asset formatting checks
 ```
 
-模拟 DOM 测试不等于真实浏览器验收；当前尚未完成浏览器视觉验收或其他模型宿主实测。
+Simulated DOM tests do not constitute browser visual acceptance or verification in another model host.

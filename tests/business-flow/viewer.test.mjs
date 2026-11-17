@@ -20,6 +20,7 @@ class Element {
     this.attrs[k] = String(v);
   }
   append(el) {
+    if (el.parent) el.remove();
     el.parent = this;
     this.children.push(el);
   }
@@ -35,12 +36,18 @@ class Element {
   addEventListener(name, fn) {
     this.events[name] = fn;
   }
+  getTotalLength() {
+    return 100;
+  }
+  getPointAtLength(distance) {
+    return { x: distance, y: distance };
+  }
   setPointerCapture() {}
   hasPointerCapture() {
     return false;
   }
 }
-function setup(adapt = () => {}) {
+function setup(adapt = () => {}, { demo = false, reduced = false } = {}) {
   const graph = JSON.parse(
     fs.readFileSync(
       new URL('../../docs/business-flow/order-service.json', import.meta.url),
@@ -72,7 +79,14 @@ function setup(adapt = () => {}) {
   get('graph-data').textContent = JSON.stringify(graph);
   get('depth').value = '1';
   get('direction').value = 'both';
+  let callback = null,
+    time = 0,
+    motionChange;
+  const documentEvents = {};
   const document = {
+    addEventListener: (name, fn) => {
+      documentEvents[name] = fn;
+    },
     getElementById: get,
     createElement: (tag) => new Element(tag),
     createElementNS: (_, tag) => new Element(tag),
@@ -84,20 +98,39 @@ function setup(adapt = () => {}) {
     ),
     {
       document,
-      requestAnimationFrame: () => 1,
-      cancelAnimationFrame: () => {},
-      matchMedia: () => ({ matches: false }),
+      requestAnimationFrame: (fn) => {
+        callback = fn;
+        return 1;
+      },
+      cancelAnimationFrame: () => {
+        callback = null;
+      },
+      matchMedia: () => ({
+        matches: reduced,
+        addEventListener: (_, fn) => {
+          motionChange = fn;
+        },
+      }),
       ResizeObserver: class {
         observe() {}
       },
       setTimeout: () => {},
     },
   );
+  if (!demo) get('collapse').onclick();
+  const advance = (count = 1) => {
+    for (let i = 0; i < count; i++) {
+      const next = callback;
+      callback = null;
+      time += 100;
+      if (next) next(time);
+    }
+  };
   const nodes = () => get('nodes').children;
   const node = (id) => nodes().find((el) => el.attrs['data-node'] === id);
   const click = (id) => node(id).events.keydown({ key: 'Enter', preventDefault() {} });
   const edges = () => get('edges').children.map((el) => el.attrs['data-edge']);
-  return { get, nodes, node, click, edges };
+  return { get, nodes, node, click, edges, advance, document, documentEvents, motionChange };
 }
 
 test('overview → focus reveals neighbors, dims unrelated nodes; refocus then collapse', () => {
@@ -139,7 +172,7 @@ test('inferred relations require opt-in, reset clears filters and expansion', ()
   assert(a.edges().includes('guess'));
   a.get('reset').onclick();
   assert.equal(a.get('inferred').checked, false);
-  assert.equal(a.nodes().length, 4);
+  assert(a.nodes().length > 4);
 });
 test('search finds hidden nodes and evidence is rendered as text', () => {
   const a = setup();
@@ -215,7 +248,7 @@ test('detail search and direction filtering respect the selected view', () => {
   assert(!a.node('amount-mismatch'));
   a.get('reset').onclick();
   assert.equal(a.get('logic').checked, false);
-  assert.equal(a.nodes().length, 4);
+  assert(a.nodes().length > 4);
 });
 
 function coords(el) {
@@ -355,4 +388,118 @@ test('English catalog covers rule panels, impact explanations, status and search
   a.get('search').value = 'nonexistent-123';
   a.get('search').oninput();
   assert.equal(a.get('results').children[0].textContent, 'No matching nodes');
+});
+
+test('spherical demo starts from a declared entry, rotates and travels along supported edges', () => {
+  const a = setup(
+    (g) => {
+      g.nodes.forEach((n) => {
+        n.entry = n.id === 'create';
+      });
+    },
+    { demo: true },
+  );
+  assert.equal(a.get('play').attrs['aria-pressed'], 'true');
+  assert.equal(a.node('create').attrs['data-current'], 'true');
+  const before = coords(a.node('create'));
+  a.advance(17);
+  assert.notDeepEqual(coords(a.node('create')), before);
+  const active = a.get('edges').children.filter((e) => e.attrs['data-playing'] === 'true');
+  assert.equal(active.length, 1);
+  assert(!active[0].attrs.class.includes('inferred'));
+  assert.equal(a.get('particle').attrs.visibility, 'visible');
+  a.advance(8);
+  assert(Number(a.get('particle').attrs.cx) > 0);
+  a.get('play').onclick();
+  const stopped = coords(a.node('create'));
+  a.advance(30);
+  assert.deepEqual(coords(a.node('create')), stopped);
+  a.get('play').onclick();
+  a.advance(5);
+  assert.notDeepEqual(coords(a.node('create')), stopped);
+});
+
+test('selecting during playback pauses and reveals both directions without overlap', () => {
+  const a = setup(() => {}, { demo: true });
+  a.get('direction').value = 'upstream';
+  a.click('pay');
+  assert.equal(a.get('play').attrs['aria-pressed'], 'false');
+  assert.equal(a.get('direction').value, 'both');
+  assert(a.node('orders'));
+  assert(a.node('payments'));
+  assert(a.node('paid'));
+  assertNoNodeOverlap(a);
+  assert.equal(a.get('particle').attrs.visibility, 'hidden');
+  const selected = coords(a.node('pay'));
+  a.advance(30);
+  assert.deepEqual(coords(a.node('pay')), selected);
+  a.get('new-entry').onclick();
+  assert.equal(a.get('play').attrs['aria-pressed'], 'true');
+  assert.equal(a.node('pay').attrs['aria-pressed'], 'false');
+});
+
+test('reduced motion starts paused and explicit playback advances without rotation', () => {
+  const a = setup(() => {}, { demo: true, reduced: true });
+  assert.equal(a.get('play').attrs['aria-pressed'], 'false');
+  const before = coords(a.node('create'));
+  a.get('play').onclick();
+  a.advance(30);
+  assert.deepEqual(coords(a.node('create')), before);
+  assert.equal(a.get('particle').attrs.cx, '0');
+  a.document.hidden = true;
+  a.documentEvents.visibilitychange();
+  assert.equal(a.get('play').attrs['aria-pressed'], 'false');
+  a.get('play').onclick();
+  a.motionChange({ matches: true });
+  assert.equal(a.get('play').attrs['aria-pressed'], 'false');
+});
+
+test('cyclic route terminates, and graphs without identifiable entries do not invent one', () => {
+  const adapt = (g) => {
+    g.nodes = g.nodes.filter((n) => ['create', 'pay'].includes(n.id));
+    g.nodes.forEach((n) => {
+      n.entry = n.id === 'create';
+    });
+    g.edges = [
+      { id: 'there', source: 'create', target: 'pay', status: 'supported' },
+      { id: 'back', source: 'pay', target: 'create', status: 'supported' },
+    ];
+  };
+  const a = setup(adapt, { demo: true });
+  a.advance(100);
+  assert.equal(a.get('play').attrs['aria-pressed'], 'false');
+  assert.match(a.get('playback-status').textContent, /路径结束/);
+  const b = setup(
+    (g) => {
+      adapt(g);
+      g.nodes.forEach((n) => {
+        delete n.entry;
+      });
+    },
+    { demo: true },
+  );
+  assert.equal(b.get('play').attrs['aria-pressed'], 'false');
+  assert.match(b.get('playback-status').textContent, /未识别到入口/);
+});
+
+test('topological root fallback and detail playback respect filters and branch exclusivity', () => {
+  const a = setup(
+    (g) => {
+      g.nodes.forEach((n) => {
+        delete n.entry;
+      });
+      g.edges = g.edges.filter((e) => e.target !== 'create' && e.status === 'supported');
+    },
+    { demo: true },
+  );
+  assert.equal(a.node('create').attrs['data-current'], 'true');
+  a.get('logic').checked = true;
+  a.get('logic').onchange();
+  a.get('new-entry').onclick();
+  for (let i = 0; i < 15; i++) {
+    a.advance(16);
+    const active = a.get('edges').children.filter((e) => e.attrs['data-playing'] === 'true');
+    assert(active.length <= 1);
+    assert(!active.some((e) => e.attrs['data-edge'] === 'save'));
+  }
 });

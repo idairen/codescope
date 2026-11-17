@@ -14,6 +14,12 @@ Node fields: `id` (unique nonempty string), `label`, `kind` (`actor`, `process`,
 
 Edge fields: `id` (unique), `source`, `target` (existing node IDs), `label` (data transferred or action), `status` (`supported` or `inferred`), `reason` (why the evidence supports the relation, or why it remains a hypothesis), `evidence` (nonempty reference array). Different directed relations between the same nodes are allowed. Cycles and self loops are allowed.
 
+## Entry points and demonstration
+
+Optional node `entry` is a boolean. Use `entry: true` only for a source-confirmed handler, job, event consumer, or other business entry, supported by the node's references. It is independent of `core` (collapsed inspection membership). The spherical overview displays all nodes eligible for the current detail setting. Automatic playback randomly selects an explicit entry with a supported outgoing edge; if none is available, it selects a supported topological root with an outgoing edge. Cyclic graphs without such entries show a no-entry message instead of inventing a starting point.
+
+Playback follows one supported directed edge at a time and never repeats an edge within a run. At a branch it randomly illustrates one possible continuation, without evaluating conditions, ordering all side effects, or proving runtime feasibility. It stops at a terminal or when no unvisited outgoing edge remains. Inferred relations may be displayed but are never played. Selecting a node pauses playback and expands both upstream and downstream context with label-aware collision avoidance. Reset returns to the spherical view. Reduced-motion users start paused and may explicitly request discrete-step playback.
+
 ## Report language
 
 Newly analyzed graphs must include `language: {code, selection, reason, evidence}`. `code` is a BCP-47-style tag (`en`, `zh-CN`, etc.), `selection` is `project`, `override`, or `fallback`, and `reason` is a nonempty rationale in the chosen language. `project` requires nonempty current-source references; other modes allow an empty evidence array. Reference substantive docs and code comments/docstrings as described in [language-selection.md](language-selection.md). These references also enter `sourceHashes`.
